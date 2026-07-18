@@ -1,0 +1,3 @@
+# Never publish personal data - backups contain names, numbers, birthdays, notes
+orbit-backup*.json
+*.backup.json

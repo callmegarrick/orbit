@@ -1,0 +1,32 @@
+# Orbit — improvement backlog
+
+Goal: Garrick consistently keeps up with friends & family and never misses a birthday.
+Priorities: lower friction to act · make the daily 10-second check-in stick · data safety.
+
+## Done
+- [x] v1: dashboard, rings, health labels, calendar, occasions (verified 2026–28 dates), WhatsApp one-tap, export/import, PWA + offline SW, PowerShell server, 9am Windows reminder script
+- [x] Iteration 1 (2026-07-11): **Bulk quick-add** — paste "Name, phone, cadence, birthday" lines, one per person; flexible parsing (weekly/every 2 weeks/30, 14 Sep / 11/02/1999). Added permanent `?selftest` hook (10 assertions) for automated verification.
+- [x] Iteration 2 (2026-07-11): **Auto-backup to a real file** — File System Access API; pick a file once (Settings → Backup), Orbit rewrites it 1.5s after every change. Handle persisted in IndexedDB; on restart, permission re-granted with one click via toast ("Resume"). Survives browser-data wipe.
+- [x] Iteration 3 (2026-07-11): **Backdated logging** — "▾" next to every ✓ Done button opens Today / Yesterday / 2 days ago / date-picker + optional note; "+ Add past touch" in history modal; future dates clamped to today.
+- [x] Iteration 4 (2026-07-11): **Weekly wins on hero** — 7-day touch-dot strip (today outlined, filled = ≥1 touch that day) + encouraging copy that scales with the count (0 → nudge, 6+ → 🔥). Reward framing, not guilt.
+- [x] Iteration 5 (2026-07-11): **Google Contacts CSV import** — proper quoted-CSV parser, header mapping (old Name/Given Name + new First/Last formats), Google `--MM-DD` year-unknown birthdays, `:::` multi-value phones; preview modal with per-person tick, dupe auto-skip, one cadence applied to all. Selftest now 13 assertions.
+- [x] Iteration 6 (2026-07-11): **Final polish** — "turns N" ages on focus cards, birthday rows, and calendar (0004 sentinel year excluded); manifest shortcuts (Who's due today? / People / Calendar); SW cache bumped to orbit-v2 so installed apps refresh. Selftest 15 assertions.
+
+## Next
+(empty — improvement loop stopped 2026-07-11 after 6 iterations; remaining ideas below were judged marginal. Restart anytime with /loop.)
+
+## Ideas if the loop restarts
+- **Monthly review view** — "who slipped through the cracks last month" retrospective.
+
+## Boundary-pushing loop (started 2026-07-11)
+See [IDEAS.md](IDEAS.md) — brainstorm ledger with verdicts. Iteration 1 shipped `orbit-notify.ps1` + `setup-morning-toast.bat`: native Windows toasts with real names, browser fully closed.
+
+## Parked (marginal / needs justification)
+- Contact photos (manual upload only; no API without server)
+- Multi-device sync (needs a backend — out of scope by design)
+- Streak counters (risk: breaking a streak demotivates — prefer weekly wins framing)
+
+## Verification recipe (for each iteration)
+Headless Edge, fresh profile per run:
+`msedge --headless=new --disable-gpu --user-data-dir=%TEMP%\fresh-N --virtual-time-budget=8000 --dump-dom "http://localhost:8123/?demo&tab=<id>&selftest"`
+Check: no `id="jserror"` div, all `PASS` in `id="selftest"` div, expected UI strings present. Screenshots via `--screenshot=`.
