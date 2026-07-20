@@ -18,6 +18,9 @@ Priorities: lower friction to act · make the daily 10-second check-in stick · 
 ## Ideas if the loop restarts
 - **Monthly review view** — "who slipped through the cracks last month" retrospective.
 
+## Roadmap loop (started 2026-07-20, per the product vision doc)
+- [x] Stage 02 **Plans** (2026-07-20): dated intentions with optional person link ("Movie with Rohan, Sat" / "Decathlon sale, 25th"). Today section (7-day window, overdue flagged), calendar dots (magenta) + "+ Plan on this day" from day panel, done-with-person counts as a touch (undoable), one-tap Google Calendar template links (no OAuth), included in in-app digest, SW alert mirror, and orbit-notify.ps1 morning toast. SW v4. Selftest 19 assertions.
+
 ## Boundary-pushing loop (started 2026-07-11)
 See [IDEAS.md](IDEAS.md) — brainstorm ledger with verdicts. Iteration 1 shipped `orbit-notify.ps1` + `setup-morning-toast.bat`: native Windows toasts with real names, browser fully closed.
 

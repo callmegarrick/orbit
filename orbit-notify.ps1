@@ -142,6 +142,21 @@ try {
     }
 } catch {}
 
+# plans due today or tomorrow
+try {
+    foreach ($pl in @($data.plans)) {
+        if ($null -eq $pl -or $pl.done -or -not $pl.date) { continue }
+        try {
+            $pd = [datetime]::ParseExact($pl.date, "yyyy-MM-dd", $null)
+            $du = ($pd - $today).Days
+            if ($du -ge 0 -and $du -le 1) {
+                $when = if ($du -eq 0) { "TODAY" } else { "tomorrow" }
+                $occs += "Plan: $($pl.title) $when"
+            }
+        } catch {}
+    }
+} catch {}
+
 if (-not $overdue -and -not $bdays -and -not $occs) {
     Write-Host "ALL CLEAR - no toast needed"
     exit 0

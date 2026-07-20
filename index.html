@@ -31,6 +31,7 @@
   --violet: #4a3aa7;
   --aqua: #1baf7a;
   --orange: #eb6834;
+  --magenta: #e87ba4;
   --shadow: 0 1px 2px rgba(11,11,11,0.04), 0 4px 16px rgba(11,11,11,0.05);
   --shadow-lift: 0 2px 6px rgba(11,11,11,0.07), 0 10px 32px rgba(11,11,11,0.09);
   --radius: 14px;
@@ -50,6 +51,7 @@
     --violet: #9085e9;
     --aqua: #199e70;
     --orange: #d95926;
+    --magenta: #d55181;
     --shadow: none;
     --shadow-lift: 0 2px 6px rgba(0,0,0,0.4);
   }
@@ -407,6 +409,7 @@ const DEFAULTS = {
   version: 1,
   people: [],
   tasks: [],
+  plans: [],
   occasions: BUILTIN_OCCASIONS.map(o => ({ ...o, enabled: true, done: {} })),
   settings: { birthdayLead: 7, occasionLead: 3, lastNotified: {} },
 };
@@ -422,6 +425,7 @@ function load() {
       if (!data.occasions.some(o => o.id === b.id)) data.occasions.push({ ...b, enabled: true, done: {} });
     }
     data.settings = Object.assign({ birthdayLead: 7, occasionLead: 3, lastNotified: {} }, data.settings);
+    data.plans = data.plans ?? [];
     return data;
   } catch (e) { console.error("load failed", e); return structuredClone(DEFAULTS); }
 }
@@ -547,6 +551,13 @@ function fillTemplate(tpl, p, occName) {
   return tpl.replaceAll("{name}", p.name.split(" ")[0]).replaceAll("{occasion}", occName ?? "");
 }
 const NUDGE_TPL = "Hey {name}! Been a while — how have you been? 😊";
+function gcalLink(pl) {
+  const start = pl.date.replaceAll("-", "");
+  const end = addDays(pl.date, 1).replaceAll("-", "");
+  const person = pl.personId ? S.people.find(p => p.id === pl.personId) : null;
+  const details = [pl.note, person ? `With ${person.name}` : "", "— from Orbit"].filter(Boolean).join("\n");
+  return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(pl.title)}&dates=${start}/${end}&details=${encodeURIComponent(details)}`;
+}
 const OCC_TPL = "Happy {occasion}, {name}! 🎉 Thinking of you — hope you're doing great. Let's catch up soon!";
 const BDAY_TPL = "Happy birthday, {name}! 🎂🎉 Hope this year is your best one yet!";
 
@@ -698,6 +709,29 @@ function renderToday() {
       }).join("") + `</div></section>`;
   }
 
+  const upcomingPlans = S.plans.filter(pl => !pl.done)
+    .map(pl => ({ pl, dd: daysUntil(pl.date) }))
+    .filter(x => x.dd <= 7)
+    .sort((a, b) => a.dd - b.dd);
+  html += `<section class="block"><div class="block-head"><h2>Plans</h2><button class="more" data-act="add-plan">+ Add plan</button></div>`;
+  if (upcomingPlans.length) {
+    html += `<div class="rows card">` + upcomingPlans.map(({ pl, dd }) => {
+      const person = pl.personId ? S.people.find(p => p.id === pl.personId) : null;
+      return `<div class="row" data-act="edit-plan" data-id="${pl.id}">
+        <div style="font-size:22px;width:40px;text-align:center">📌</div>
+        <div class="info"><div class="name">${esc(pl.title)}</div>
+        <div class="sub">${dd < 0 ? `<span style="color:var(--critical);font-weight:500">was ${fmtNice(pl.date).toLowerCase()}</span>` : `${fmtNice(pl.date)}${dd === 0 ? " — today!" : dd === 1 ? " — tomorrow" : ""}`}${person ? ` · with ${esc(person.name.split(" ")[0])}` : ""}${pl.note ? ` · ${esc(pl.note)}` : ""}</div></div>
+        <div class="side">
+          <button class="btn ghost sm" data-act="plan-gcal" data-id="${pl.id}" title="Add to Google Calendar">📅</button>
+          <button class="btn sm" data-act="plan-done" data-id="${pl.id}">✓</button>
+        </div>
+      </div>`;
+    }).join("") + `</div>`;
+  } else {
+    html += `<div class="card" style="padding:14px 18px;color:var(--muted);font-size:13.5px">Nothing planned — a movie with a friend? A sale to catch? 📌</div>`;
+  }
+  html += `</section>`;
+
   if (bdays.length) {
     html += `<section class="block"><div class="block-head"><h2>Birthdays</h2></div><div class="rows card">` +
       bdays.map(({ p, date, dd }) => {
@@ -839,6 +873,13 @@ function calendarItems(y, m) { // m: 0-11 → map isoDate -> items[]
     const dd = fromISO(due);
     if (dd >= monthStart && dd <= monthEnd) push(due, { kind: "task", label: `${t.emoji || "🔁"} ${t.name}`, id: t.id, act: "edit-task" });
   }
+  for (const pl of S.plans.filter(pl => !pl.done)) {
+    const pd = fromISO(pl.date);
+    if (pd >= monthStart && pd <= monthEnd) {
+      const person = pl.personId ? S.people.find(p => p.id === pl.personId) : null;
+      push(pl.date, { kind: "plan", label: `📌 ${pl.title}${person ? ` — with ${person.name}` : ""}`, id: pl.id, act: "edit-plan" });
+    }
+  }
   for (const o of S.occasions.filter(o => o.enabled)) {
     let ds = [];
     if (o.fixed) { const [fm, fd] = o.fixed.split("-").map(Number); if (fm === m + 1) ds = [iso(new Date(y, m, fd))]; }
@@ -848,7 +889,7 @@ function calendarItems(y, m) { // m: 0-11 → map isoDate -> items[]
   }
   return map;
 }
-const KIND_COLOR = { due: "var(--accent)", bday: "var(--violet)", occ: "var(--orange)", task: "var(--aqua)" };
+const KIND_COLOR = { due: "var(--accent)", bday: "var(--violet)", occ: "var(--orange)", task: "var(--aqua)", plan: "var(--magenta)" };
 function renderCalendar() {
   if (!calCursor) { const t = todayDate(); calCursor = { y: t.getFullYear(), m: t.getMonth() }; }
   const { y, m } = calCursor;
@@ -874,7 +915,8 @@ function renderCalendar() {
       (its.length ? `<div class="rows">` + its.map(it => `<div class="row" data-act="${it.act}" data-id="${it.id}">
           <span style="width:10px;height:10px;border-radius:50%;background:${KIND_COLOR[it.kind]};flex-shrink:0"></span>
           <div class="info"><div class="sub" style="color:var(--ink);font-size:14px">${esc(it.label)}</div></div></div>`).join("") + `</div>`
-        : `<div class="empty-day">Nothing on this day.</div>`) + `</div>`;
+        : `<div class="empty-day">Nothing on this day.</div>`)
+      + `<div style="padding:0 18px 14px"><button class="btn sm" data-act="add-plan" data-date="${calSelected}">📌 + Plan on this day</button></div></div>`;
   }
   return `<div class="cal-head">
       <h2 class="serif">${MONTHS[m]} ${y}</h2>
@@ -889,6 +931,7 @@ function renderCalendar() {
       <span><i style="background:var(--violet)"></i>Birthday</span>
       <span><i style="background:var(--orange)"></i>Occasion</span>
       <span><i style="background:var(--aqua)"></i>Routine</span>
+      <span><i style="background:var(--magenta)"></i>Plan</span>
     </div>${panel}`;
 }
 
@@ -1178,6 +1221,29 @@ function csvPreviewModal() {
     </form>`);
 }
 
+function planModal(pl, presetDate) {
+  const isNew = !pl;
+  pl = pl ?? { title: "", date: presetDate || todayISO(), personId: "", note: "" };
+  openModal(`
+    <h2 class="serif">${isNew ? "Add plan" : esc(pl.title)}</h2>
+    <form id="planForm" data-id="${pl.id ?? ""}">
+      <div class="field"><label>What</label><input name="title" required value="${esc(pl.title)}" placeholder="Movie with Rohan · Decathlon sale · Book flights"></div>
+      <div class="field-row">
+        <div class="field"><label>When</label><input name="date" type="date" required value="${esc(pl.date)}"></div>
+        <div class="field"><label>With <span style="font-weight:400;color:var(--muted)">(optional)</span></label>
+          <select name="personId"><option value="">No one — just a reminder</option>
+          ${S.people.map(p => `<option value="${p.id}" ${p.id === pl.personId ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select>
+          <div class="hint">Linked plans count as a touch when done.</div></div>
+      </div>
+      <div class="field"><label>Note <span style="font-weight:400;color:var(--muted)">(optional)</span></label><input name="note" value="${esc(pl.note ?? "")}" placeholder="book tickets first"></div>
+      <div class="modal-actions">
+        ${!isNew ? `<button type="button" class="btn danger left" data-act="del-plan" data-id="${pl.id}">Delete</button>` : ""}
+        ${!isNew ? `<button type="button" class="btn" data-act="plan-gcal" data-id="${pl.id}">📅 Google Calendar</button>` : ""}
+        <button type="button" class="btn" data-act="close">Cancel</button>
+        <button type="submit" class="btn primary">${isNew ? "Add plan" : "Save"}</button>
+      </div>
+    </form>`);
+}
 function occasionModal() {
   openModal(`
     <h2 class="serif">Add occasion</h2>
@@ -1349,17 +1415,22 @@ const SAMPLE = () => {
     id: uid(), name, phone, cadence, birthday, sample: true, createdAt: addDays(t, -120),
     interactions: [{ date: addDays(t, -offsetDays) }, ...extra.map(d => ({ date: addDays(t, -d) }))],
   });
+  const people = [
+    mk("Amma", "+91 98111 22233", 7, 11, "1968-09-14", [16, 22, 29]),
+    mk("Thatha & Paati", "+91 98222 33444", 14, 20, "", [32, 45, 60]),
+    mk("Rohan", "+91 99887 76655", 30, 8, addDays(t, 4).slice(0, 4) + addDays(t, 4).slice(4), [40, 68]),
+    (() => { const p = mk("Priya", "+91 91234 56789", 30, 26, "1999-02-11", [55, 84]); p.interactions[0].note = "asked about her job interview"; return p; })(),
+    mk("Uncle Suresh", "+91 90000 11122", 90, 30, "", [120]),
+  ];
   return {
-    people: [
-      mk("Amma", "+91 98111 22233", 7, 11, "1968-09-14", [16, 22, 29]),
-      mk("Thatha & Paati", "+91 98222 33444", 14, 20, "", [32, 45, 60]),
-      mk("Rohan", "+91 99887 76655", 30, 8, addDays(t, 4).slice(0, 4) + addDays(t, 4).slice(4), [40, 68]),
-      (() => { const p = mk("Priya", "+91 91234 56789", 30, 26, "1999-02-11", [55, 84]); p.interactions[0].note = "asked about her job interview"; return p; })(),
-      mk("Uncle Suresh", "+91 90000 11122", 90, 30, "", [120]),
-    ],
+    people,
     tasks: [
       { id: uid(), name: "Dentist check-up", emoji: "🦷", cadence: 180, lastDone: addDays(t, -170), sample: true },
       { id: uid(), name: "Health check-up", emoji: "🩺", cadence: 365, lastDone: addDays(t, -200), sample: true },
+    ],
+    plans: [
+      { id: uid(), title: "Movie with Rohan", date: addDays(t, 2), personId: people[2].id, note: "", done: false, sample: true },
+      { id: uid(), title: "Decathlon sale", date: addDays(t, 5), personId: "", note: "running shoes", done: false, sample: true },
     ],
   };
 };
@@ -1448,6 +1519,36 @@ document.addEventListener("click", e => {
     }
     case "open-queue": e.stopPropagation(); queueModal(id); break;
     case "open-review": reviewModal(); break;
+    case "add-plan": e.stopPropagation(); planModal(null, el.dataset.date); break;
+    case "edit-plan": e.stopPropagation(); planModal(S.plans.find(x => x.id === id)); break;
+    case "del-plan": {
+      S.plans = S.plans.filter(x => x.id !== id);
+      save(); closeModal(); render();
+      break;
+    }
+    case "plan-gcal": {
+      e.stopPropagation();
+      window.open(gcalLink(S.plans.find(x => x.id === id)), "_blank", "noopener");
+      break;
+    }
+    case "plan-done": {
+      e.stopPropagation();
+      const pl = S.plans.find(x => x.id === id);
+      pl.done = true; pl.doneAt = todayISO();
+      const person = pl.personId ? S.people.find(p => p.id === pl.personId) : null;
+      if (person) {
+        person.interactions = person.interactions ?? [];
+        person.interactions.push({ date: todayISO(), note: pl.title });
+        person.snoozedUntil = null;
+      }
+      save(); render();
+      toast(`${pl.title} ✓${person ? ` — counted as a touch with ${person.name.split(" ")[0]}` : ""}`, () => {
+        pl.done = false; delete pl.doneAt;
+        if (person) person.interactions.pop();
+        save(); render();
+      });
+      break;
+    }
     case "relax-cadence": {
       const p = S.people.find(x => x.id === id);
       const steps = [7, 14, 30, 60, 90, 180, 365];
@@ -1491,13 +1592,14 @@ document.addEventListener("click", e => {
     case "cal-day": calSelected = el.dataset.date; render(); break;
     case "load-sample": {
       const s = SAMPLE();
-      S.people.push(...s.people); S.tasks.push(...s.tasks);
+      S.people.push(...s.people); S.tasks.push(...s.tasks); S.plans.push(...s.plans);
       save(); render(); toast("Example data loaded — remove it any time in Settings");
       break;
     }
     case "clear-sample": {
       S.people = S.people.filter(p => !p.sample);
       S.tasks = S.tasks.filter(t => !t.sample);
+      S.plans = S.plans.filter(pl => !pl.sample);
       save(); render(); toast("Example data removed");
       break;
     }
@@ -1570,6 +1672,19 @@ document.addEventListener("submit", e => {
     if (id) Object.assign(S.tasks.find(t => t.id === id), data);
     else S.tasks.push({ id: uid(), createdAt: todayISO(), ...data });
     save(); closeModal(); render();
+  } else if (f.id === "planForm") {
+    const id = f.dataset.id;
+    const data = {
+      title: fd.get("title").trim(),
+      date: fd.get("date") || todayISO(),
+      personId: fd.get("personId") || "",
+      note: (fd.get("note") ?? "").trim(),
+    };
+    if (!data.title) return;
+    if (id) Object.assign(S.plans.find(x => x.id === id), data);
+    else S.plans.push({ id: uid(), done: false, createdAt: todayISO(), ...data });
+    save(); closeModal(); render();
+    if (!id) toast(`Planned: ${data.title} — ${fmtNice(data.date).toLowerCase()} 📌`);
   } else if (f.id === "noteLastForm") {
     const p = S.people.find(x => x.id === f.dataset.id);
     const note = (fd.get("note") ?? "").trim();
@@ -1653,6 +1768,8 @@ function digestText() {
   if (od.length) bits.push(`${od.length} overdue: ${od.slice(0, 3).map(x => x.p.name.split(" ")[0]).join(", ")}${od.length > 3 ? "…" : ""}`);
   if (bd.length) bits.push(`🎂 ${bd.slice(0, 2).map(x => `${x.p.name.split(" ")[0]} ${inDays(x.dd)}`).join(", ")}`);
   if (oc.length) bits.push(`${oc[0].o.emoji} ${oc[0].o.name} ${inDays(oc[0].dd)}`);
+  const pls = S.plans.filter(pl => !pl.done && daysUntil(pl.date) === 0);
+  if (pls.length) bits.push(`📌 ${pls[0].title} today`);
   return bits.join(" · ");
 }
 function notifyDigest(force) {
@@ -1782,6 +1899,7 @@ async function mirrorAlertsToIDB() {
       }
       for (const b of upcomingBirthdays(365)) if (b.date === day) lines.push(`🎂 ${b.p.name.split(" ")[0]}'s birthday`);
       for (const o of S.occasions.filter(o => o.enabled)) { const n = occasionNext(o); if (n === day) lines.push(`${o.emoji} ${o.name}`); }
+      for (const pl of S.plans.filter(pl => !pl.done)) if (pl.date === day) lines.push(`📌 ${pl.title}`);
       if (lines.length) alerts.push({ date: day, text: lines.slice(0, 3).join(" · ") });
     }
     const db = await idbOpen();
@@ -1809,7 +1927,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
 
 /* ---------- boot ---------- */
 const _q = new URLSearchParams(location.search);
-if (_q.has("demo") && !S.people.length) { const s = SAMPLE(); S.people.push(...s.people); S.tasks.push(...s.tasks); save(); }
+if (_q.has("demo") && !S.people.length) { const s = SAMPLE(); S.people.push(...s.people); S.tasks.push(...s.tasks); S.plans.push(...s.plans); save(); }
 if (TABS.some(t => t.id === _q.get("tab"))) activeTab = _q.get("tab");
 window.addEventListener("error", e => { const d = document.createElement("div"); d.id = "jserror"; d.style.display = "none"; d.textContent = e.message; document.body.appendChild(d); });
 render();
@@ -1836,6 +1954,9 @@ if (_q.has("selftest")) setTimeout(() => {
   ok("age unknown year", birthdayAge({ birthday: "0004-05-05" }) === null);
   ok("lastNote latest wins", lastNote({ interactions: [{ date: "2026-01-01", note: "a" }, { date: "2026-03-01" }, { date: "2026-02-01", note: "b" }] }).note === "b");
   ok("lastNote none", lastNote({ interactions: [{ date: "2026-01-01" }] }) === null);
+  const gl = gcalLink({ title: "Test & go", date: "2026-07-25", personId: "", note: "" });
+  ok("gcal all-day dates", gl.includes("dates=20260725/20260726"));
+  ok("gcal title encoded", gl.includes("text=Test%20%26%20go"));
   ok("age turns 30", birthdayAge({ birthday: `${todayDate().getFullYear() - 30}-12-31` }) === 30);
   const d = document.createElement("div"); d.id = "selftest"; d.style.display = "none";
   d.textContent = t.join(" | ");
