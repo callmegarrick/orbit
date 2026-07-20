@@ -1,6 +1,6 @@
 /* Orbit service worker — offline shell + best-effort daily background check */
-const VERSION = "orbit-v2";
-const SHELL = ["./", "./index.html", "./manifest.json", "./icon.svg"];
+const VERSION = "orbit-v3";
+const SHELL = ["./", "./index.html", "./manifest.json", "./icon.svg", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(VERSION).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
