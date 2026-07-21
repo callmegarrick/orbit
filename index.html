@@ -633,6 +633,19 @@ function emptyState() {
 }
 
 /* ---------- Today ---------- */
+function onThisDay() {
+  const t = todayISO();
+  for (const [days, label] of [[365, "A year ago"], [183, "Six months ago"]]) {
+    for (const off of [0, 1, -1, 2, -2]) {
+      const target = addDays(t, -days + off);
+      for (const p of S.people) {
+        const hit = (p.interactions ?? []).find(i => i.date === target && i.note);
+        if (hit) return { label, p, note: hit.note };
+      }
+    }
+  }
+  return null;
+}
 function weekStrip() {
   const days = [];
   for (let i = 6; i >= 0; i--) {
@@ -674,6 +687,7 @@ function renderToday() {
     <h2 class="serif">${greet}, Garrick</h2>
     <p>${parts.length ? parts.join(" · ") : `<span class="all-clear">✓ All caught up — everyone's in orbit.</span>`}</p>
     ${weekStrip()}
+    ${(() => { const otd = onThisDay(); return otd ? `<div style="margin-top:11px;font-size:13.5px;color:var(--ink-2)">🕰 ${otd.label}, you and <b>${esc(otd.p.name.split(" ")[0])}</b> talked about “${esc(otd.note)}” — worth a follow-up?</div>` : ""; })()}
   </div>`;
   if (new Date().getDate() <= 5 && S.settings.lastReviewMonth !== todayISO().slice(0, 7) && S.people.length) {
     html += `<div class="card" style="padding:14px 18px;margin:-14px 0 28px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
@@ -1021,9 +1035,17 @@ function closeModal() { $("#modalHost").innerHTML = ""; }
 const CADENCE_PRESETS = [[7, "Weekly"], [14, "Every 2 weeks"], [30, "Monthly"], [90, "Quarterly"]];
 function personModal(p) {
   const isNew = !p;
-  p = p ?? { name: "", phone: "", cadence: 30, birthday: "", notes: "" };
+  p = p ?? { name: "", phone: "", cadence: 30, birthday: "", notes: "", circle: "" };
+  const moments = [...(p.interactions ?? [])].filter(i => i.note)
+    .sort((a, b) => (b.date < a.date ? -1 : 1)).slice(0, 3);
+  const recap = !isNew && (moments.length || p.circle) ? `
+    <div style="background:var(--page);border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:13.5px;line-height:1.6">
+      ${p.circle ? `<div${moments.length ? ` style="margin-bottom:6px"` : ""}>👨‍👩‍👧 ${esc(p.circle)}</div>` : ""}
+      ${moments.map(m => `<div style="color:var(--ink-2)">📝 <b style="color:var(--ink)">${fmtNice(m.date)}</b> — ${esc(m.note)}</div>`).join("")}
+    </div>` : "";
   openModal(`
     <h2 class="serif">${isNew ? "Add person" : esc(p.name)}</h2>
+    ${recap}
     <form id="personForm" data-id="${p.id ?? ""}">
       <div class="field"><label>Name</label><input name="name" required value="${esc(p.name)}" placeholder="Amma"></div>
       <div class="field"><label>WhatsApp number</label><input name="phone" value="${esc(p.phone ?? "")}" placeholder="+91 98765 43210" inputmode="tel">
@@ -1038,8 +1060,11 @@ function personModal(p) {
       <div class="field"><label>Birthday <span style="font-weight:400;color:var(--muted)">(optional)</span></label>
         <input name="birthday" type="date" value="${esc(p.birthday ?? "")}">
         <div class="hint">Year is optional to remember — only day &amp; month are used for reminders.</div></div>
+      <div class="field"><label>Their people <span style="font-weight:400;color:var(--muted)">(optional)</span></label>
+        <input name="circle" value="${esc(p.circle ?? "")}" placeholder="wife Meera · kids Aarav & Ira · dog Simba">
+        <div class="hint">Never fumble a partner's or kid's name again — shows here before every call.</div></div>
       <div class="field"><label>Notes <span style="font-weight:400;color:var(--muted)">(optional)</span></label>
-        <textarea name="notes" rows="2" placeholder="Kids' names, what you last talked about…">${esc(p.notes ?? "")}</textarea></div>
+        <textarea name="notes" rows="2" placeholder="How you met, what matters to them…">${esc(p.notes ?? "")}</textarea></div>
       <div class="modal-actions">
         ${!isNew ? `<button type="button" class="btn danger left" data-act="del-person" data-id="${p.id}">Delete</button>` : ""}
         ${!isNew ? `<button type="button" class="btn" data-act="history" data-id="${p.id}">History (${(p.interactions ?? []).length})</button>` : ""}
@@ -1422,6 +1447,8 @@ const SAMPLE = () => {
     (() => { const p = mk("Priya", "+91 91234 56789", 30, 26, "1999-02-11", [55, 84]); p.interactions[0].note = "asked about her job interview"; return p; })(),
     mk("Uncle Suresh", "+91 90000 11122", 90, 30, "", [120]),
   ];
+  people[0].interactions.push({ date: addDays(t, -183), note: "her tomato plants finally fruited" });
+  people[0].circle = "Appa · your cousins Vik & Anu";
   return {
     people,
     tasks: [
@@ -1654,6 +1681,7 @@ document.addEventListener("submit", e => {
       phone: fd.get("phone").trim(),
       cadence: Math.max(1, Number(fd.get("cadence")) || 30),
       birthday: fd.get("birthday") || "",
+      circle: (fd.get("circle") ?? "").trim(),
       notes: fd.get("notes").trim(),
     };
     if (!data.name) return;
@@ -1957,6 +1985,8 @@ if (_q.has("selftest")) setTimeout(() => {
   const gl = gcalLink({ title: "Test & go", date: "2026-07-25", personId: "", note: "" });
   ok("gcal all-day dates", gl.includes("dates=20260725/20260726"));
   ok("gcal title encoded", gl.includes("text=Test%20%26%20go"));
+  const otdRes = onThisDay();
+  ok("onThisDay safe", otdRes === null || (typeof otdRes.note === "string" && !!otdRes.p));
   ok("age turns 30", birthdayAge({ birthday: `${todayDate().getFullYear() - 30}-12-31` }) === 30);
   const d = document.createElement("div"); d.id = "selftest"; d.style.display = "none";
   d.textContent = t.join(" | ");
