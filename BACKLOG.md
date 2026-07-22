@@ -27,6 +27,8 @@ Priorities: lower friction to act · make the daily 10-second check-in stick · 
 
 - [x] **Message tones & starter picker** (2026-07-22, prompted by real feedback — Lena spotted the identical canned template): per-person tone (Warm / Respectful / Fun & quirky). WhatsApp button now opens a picker with 3 rotating tone-matched starters (shuffle for more), the last note shown as context, an editable box, and "open chat blank." Nothing auto-sends. Kills the "same generic line every time" tell. SW v7. Selftest 26 assertions. Verified both tones live in browser.
 
+- [x] **Talking points + device-safe templates** (2026-07-22): per-person "bring up next time" topics — jot from the message picker (inline add + remove chips) or the person editor; they resurface in the picker and on the Today focus card every time until ticked off. Also replaced em-dashes with plain punctuation in all WhatsApp-bound templates (older-Android compatibility; the reported � was a paste artifact — source emoji verified valid UTF-8). SW v8. Selftest 28 assertions.
+
 ## Boundary-pushing loop (started 2026-07-11)
 See [IDEAS.md](IDEAS.md) — brainstorm ledger with verdicts. Iteration 1 shipped `orbit-notify.ps1` + `setup-morning-toast.bat`: native Windows toasts with real names, browser fully closed.
 

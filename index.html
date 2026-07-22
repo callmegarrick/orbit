@@ -137,6 +137,18 @@ section.block { margin-bottom: 28px; }
 }
 .starter:hover { border-color: var(--accent); }
 .starter.on { border-color: var(--accent); background: var(--accent-soft); }
+.topic-list { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 8px; }
+.topic-list:empty { display: none; }
+.topic-chip {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 13px;
+  background: color-mix(in srgb, var(--magenta) 14%, var(--surface)); color: var(--ink);
+  border-radius: 99px; padding: 4px 6px 4px 11px;
+}
+.topic-chip button { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 12px; padding: 0 3px; line-height: 1; }
+.topic-chip button:hover { color: var(--critical); }
+.topic-add input { width: 100%; font: inherit; font-size: 13.5px; color: var(--ink); background: var(--page); border: 1px solid var(--border); border-radius: 9px; padding: 8px 11px; outline: none; }
+.topic-add input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.focus-topics { font-size: 12.5px; color: color-mix(in srgb, var(--magenta) 70%, var(--ink)); margin-top: 3px; }
 
 /* ---------- my day todos ---------- */
 .todo-row { display: flex; align-items: center; gap: 11px; padding: 9px 0; border-bottom: 1px solid var(--hairline); }
@@ -584,7 +596,7 @@ function waLink(p, text) {
 function fillTemplate(tpl, p, occName) {
   return tpl.replaceAll("{name}", p.name.split(" ")[0]).replaceAll("{occasion}", occName ?? "");
 }
-const NUDGE_TPL = "Hey {name}! Been a while — how have you been? 😊";
+const NUDGE_TPL = "Hey {name}! It's been a while, how have you been?";
 function gcalLink(pl) {
   const start = pl.date.replaceAll("-", "");
   const end = addDays(pl.date, 1).replaceAll("-", "");
@@ -592,7 +604,7 @@ function gcalLink(pl) {
   const details = [pl.note, person ? `With ${person.name}` : "", "— from Orbit"].filter(Boolean).join("\n");
   return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(pl.title)}&dates=${start}/${end}&details=${encodeURIComponent(details)}`;
 }
-const OCC_TPL = "Happy {occasion}, {name}! 🎉 Thinking of you — hope you're doing great. Let's catch up soon!";
+const OCC_TPL = "Happy {occasion}, {name}! 🎉 Thinking of you and hope you're doing great. Let's catch up soon!";
 const BDAY_TPL = "Happy birthday, {name}! 🎂🎉 Hope this year is your best one yet!";
 
 /* ---------- message tones & starter library ---------- */
@@ -600,25 +612,25 @@ const TONES = [["warm", "Warm"], ["respectful", "Respectful"], ["playful", "Fun 
 const toneLabel = t => (TONES.find(x => x[0] === t) ?? TONES[0])[1];
 const MSG_LIBRARY = {
   respectful: [
-    "Hi {name}, hope you're keeping well! You've been on my mind — how have you been?",
+    "Hi {name}, hope you're keeping well! You've been on my mind. How have you been?",
     "Hello {name}! It's been too long. How are you and everyone at home?",
-    "Hi {name}, just wanted to check in and see how you're doing. 🙏",
-    "Hope all's well, {name}! Been meaning to catch up — how are things your side?",
+    "Hi {name}, just wanted to check in and see how you're doing.",
+    "Hope all's well, {name}! Been meaning to catch up. How are things your side?",
     "Hi {name}! Thinking of you today. How have you been keeping?",
   ],
   warm: [
-    "Hey {name}! Been a while — how have you been? 😊",
-    "Hi {name}! You popped into my head today — how's everything going?",
+    "Hey {name}! It's been a while, how have you been?",
+    "Hi {name}! You popped into my head today. How's everything going?",
     "Hey {name}, it's been too long! What have you been up to?",
-    "Heyy {name} 👋 how's life treating you these days?",
-    "Hi {name}! Long time — tell me what's new with you 🙂",
+    "Heyy {name}! How's life treating you these days?",
+    "Hi {name}! Long time. Tell me what's new with you.",
   ],
   playful: [
-    "Oi {name}, you're officially overdue for an update. Spill. 😤",
-    "{name}!! I've decided we've been strangers for too long. Fix it 😌",
-    "Hey stranger 👀 how's the chaos going?",
-    "Okayyy it's been way too long — tell me everythingggg 🍵",
-    "{name}, this is your reminder that you owe me a proper catch-up 😂",
+    "Oi {name}, you're officially overdue for an update. Spill.",
+    "{name}!! I've decided we've been strangers for too long. Fix it.",
+    "Hey stranger, how's the chaos going?",
+    "Okayyy it's been way too long, tell me everythingggg",
+    "{name}, this is your reminder that you owe me a proper catch-up.",
   ],
 };
 function pickStarters(tone, n) {
@@ -627,6 +639,7 @@ function pickStarters(tone, n) {
   return pool.slice(0, n);
 }
 const hasWA = p => !!(p.phone ?? "").replace(/\D/g, "");
+const parseTopics = raw => String(raw ?? "").split("\n").map(s => s.trim()).filter(Boolean).slice(0, 20);
 function offerLog(p) {
   const t = $("#toast");
   undoFn = null;
@@ -646,9 +659,16 @@ function msgModal(id) {
   const starters = pickStarters(tone, 3);
   const note = lastNote(p);
   const first = esc(p.name.split(" ")[0]);
+  const topics = p.topics ?? [];
   openModal(`
     <h2 class="serif">Message ${first}</h2>
     ${note ? `<div class="msg-note">📝 Last time you talked about <b>${esc(note.note)}</b> — maybe pick that back up?</div>` : ""}
+    <div class="field"><label>Bring up with ${first}</label>
+      <div class="topic-list">
+        ${topics.map((tp, i) => `<span class="topic-chip">${esc(tp)}<button type="button" data-act="topic-del" data-id="${id}" data-i="${i}" aria-label="Remove">✕</button></span>`).join("")}
+      </div>
+      <form id="topicAddForm" data-id="${id}" class="topic-add"><input name="topic" placeholder="+ Something to talk about — press Enter" autocomplete="off" maxlength="120"></form>
+    </div>
     <div class="field"><label>${esc(toneLabel(tone))} starters — tap one, then make it yours</label>
       <div class="starter-list">
         ${starters.map(s => `<button type="button" class="starter" data-fill="${esc(fillTemplate(s, p))}">${esc(fillTemplate(s, p))}</button>`).join("")}
@@ -824,7 +844,7 @@ function renderToday() {
         return `<div class="focus-card card">
           <div class="focus-top">${avatarRing(p, st)}
             <div class="info"><div class="name">${esc(p.name)}</div>
-            <div class="why ${st.status === "late" ? "overdue" : ""}">${why}</div>${noteLine(p)}</div>
+            <div class="why ${st.status === "late" ? "overdue" : ""}">${why}</div>${noteLine(p)}${(p.topics ?? []).length ? `<div class="focus-topics">💬 bring up: ${esc((p.topics ?? []).join(", "))}</div>` : ""}</div>
           </div>
           <div class="focus-actions">
             ${hasWA(p) ? `<button class="btn wa grow" data-act="msg" data-id="${p.id}">💬 WhatsApp</button>`
@@ -1195,6 +1215,9 @@ function personModal(p) {
       <div class="field"><label>Their people <span style="font-weight:400;color:var(--muted)">(optional)</span></label>
         <input name="circle" value="${esc(p.circle ?? "")}" placeholder="wife Meera · kids Aarav & Ira · dog Simba">
         <div class="hint">Never fumble a partner's or kid's name again — shows here before every call.</div></div>
+      <div class="field"><label>Bring up next time <span style="font-weight:400;color:var(--muted)">(optional)</span></label>
+        <textarea name="topics" rows="2" placeholder="her Goa trip&#10;his knee surgery — one per line">${esc((p.topics ?? []).join("\n"))}</textarea>
+        <div class="hint">These resurface every time you message them, until you tick them off.</div></div>
       <div class="field"><label>Notes <span style="font-weight:400;color:var(--muted)">(optional)</span></label>
         <textarea name="notes" rows="2" placeholder="How you met, what matters to them…">${esc(p.notes ?? "")}</textarea></div>
       <div class="modal-actions">
@@ -1477,7 +1500,7 @@ function reviewData() {
   const star = S.people.map(p => ({ p, h: healthScore(p) })).filter(x => x.h !== null).sort((a, b) => b.h - a.h)[0] ?? null;
   return { slipped, missedB, totalTouches, star };
 }
-const BELATED_TPL = "Happy belated birthday, {name}! 🎂 So sorry I'm late — hope it was wonderful. Let's celebrate soon!";
+const BELATED_TPL = "Happy belated birthday, {name}! 🎂 So sorry I'm late, hope it was wonderful. Let's celebrate soon!";
 function reviewModal() {
   S.settings.lastReviewMonth = todayISO().slice(0, 7);
   save();
@@ -1582,8 +1605,10 @@ const SAMPLE = () => {
   people[0].interactions.push({ date: addDays(t, -183), note: "her tomato plants finally fruited" });
   people[0].circle = "Appa · your cousins Vik & Anu";
   people[0].tone = "respectful";   // Amma
+  people[0].topics = ["Appa's health checkup"];
   people[1].tone = "respectful";   // Thatha & Paati
   people[2].tone = "playful";      // Rohan
+  people[2].topics = ["his new apartment", "the Goa trip plan"];
   people[4].tone = "respectful";   // Uncle Suresh
   return {
     people,
@@ -1623,6 +1648,12 @@ document.addEventListener("click", e => {
     case "log": e.stopPropagation(); logTouch(id); break;
     case "msg": e.stopPropagation(); msgModal(id); break;
     case "msg-shuffle": msgModal(id); break;
+    case "topic-del": {
+      const p = S.people.find(x => x.id === id);
+      p.topics = (p.topics ?? []).filter((_, i) => i !== Number(el.dataset.i));
+      save(); msgModal(id);
+      break;
+    }
     case "msg-blank": {
       const p = S.people.find(x => x.id === id);
       openWA(p, ""); closeModal(); offerLog(p);
@@ -1857,11 +1888,12 @@ document.addEventListener("submit", e => {
       birthday: fd.get("birthday") || "",
       tone: fd.get("tone") || "warm",
       circle: (fd.get("circle") ?? "").trim(),
+      topics: parseTopics(fd.get("topics")),
       notes: fd.get("notes").trim(),
     };
     if (!data.name) return;
     if (id) Object.assign(S.people.find(p => p.id === id), data);
-    else S.people.push({ id: uid(), createdAt: todayISO(), interactions: [], ...data });
+    else S.people.push({ id: uid(), createdAt: todayISO(), interactions: [], topics: [], ...data });
     save(); closeModal(); render();
     if (!id) toast(`${data.name} added to your orbit ✓`);
   } else if (f.id === "taskForm") {
@@ -1875,6 +1907,10 @@ document.addEventListener("submit", e => {
     if (id) Object.assign(S.tasks.find(t => t.id === id), data);
     else S.tasks.push({ id: uid(), createdAt: todayISO(), ...data });
     save(); closeModal(); render();
+  } else if (f.id === "topicAddForm") {
+    const p = S.people.find(x => x.id === f.dataset.id);
+    const topic = (fd.get("topic") ?? "").trim();
+    if (p && topic) { p.topics = [...(p.topics ?? []), topic].slice(0, 20); save(); msgModal(p.id); }
   } else if (f.id === "msgForm") {
     const p = S.people.find(x => x.id === f.dataset.id);
     const text = ($("#msgForm textarea")?.value ?? "").trim();
@@ -2186,6 +2222,8 @@ if (_q.has("selftest")) setTimeout(() => {
   ok("pickStarters distinct", new Set(starters).size === 3);
   ok("tone starters differ by tone", MSG_LIBRARY.respectful[0] !== MSG_LIBRARY.playful[0]);
   ok("fillTemplate first name", fillTemplate("Hi {name}!", { name: "Lena Joy" }) === "Hi Lena!");
+  ok("parseTopics lines", JSON.stringify(parseTopics(" trip \n\n knee surgery ")) === JSON.stringify(["trip", "knee surgery"]));
+  ok("templates no em-dash", ![NUDGE_TPL, OCC_TPL, BELATED_TPL, ...MSG_LIBRARY.warm, ...MSG_LIBRARY.respectful, ...MSG_LIBRARY.playful].some(s => s.includes("—")));
   ok("age turns 30", birthdayAge({ birthday: `${todayDate().getFullYear() - 30}-12-31` }) === 30);
   const d = document.createElement("div"); d.id = "selftest"; d.style.display = "none";
   d.textContent = t.join(" | ");
