@@ -775,6 +775,7 @@ const TABS = [
   { id: "settings", label: "Settings" },
 ];
 let activeTab = "today";
+let showAll = false;
 let calCursor = null; // {y, m}
 let calSelected = null;
 
@@ -848,7 +849,6 @@ function weekStrip() {
 function renderToday() {
   const urgent = urgentPeople();
   const overduePeople = urgent.filter(x => x.st.status === "late");
-  const dueSoon = urgent.filter(x => x.st.status === "warn");
   const bdays = upcomingBirthdays(S.settings.birthdayLead);
   const occs = upcomingOccasions(S.settings.occasionLead);
   const lateTasks = S.tasks.map(t => ({ t, st: taskState(t) })).filter(x => x.st.dd <= 3).sort((a,b) => a.st.dd - b.st.dd);
@@ -877,75 +877,106 @@ function renderToday() {
     </div>`;
   }
 
-  if (focus.length) {
-    html += `<section class="block"><div class="block-head"><h2>Reach out today</h2></div><div class="focus-grid">` +
-      focus.map(({ p, st, nb }) => {
-        const age = birthdayAge(p);
-        const why = nb !== null && nb <= 1
-          ? `🎂 Birthday ${nb === 0 ? "today" : "tomorrow"}${age ? ` — turns ${age}` : ""}!`
-          : st.status === "late" ? `${st.overdueDays}d overdue · last touch ${agoDays(st.since)}`
-          : `due ${inDays(Math.max(0, daysUntil(st.due)))} · last touch ${agoDays(st.since)}`;
-        const tpl = nb !== null && nb <= 1 ? BDAY_TPL : NUDGE_TPL;
-        const wa = waLink(p, fillTemplate(tpl, p));
-        return `<div class="focus-card card">
-          <div class="focus-top">${avatarRing(p, st)}
-            <div class="info"><div class="name">${esc(p.name)}</div>
-            <div class="why ${st.status === "late" ? "overdue" : ""}">${why}</div>${noteLine(p)}${(p.topics ?? []).length ? `<div class="focus-topics">💬 bring up: ${esc((p.topics ?? []).join(", "))}</div>` : ""}</div>
-          </div>
-          <div class="focus-actions">
-            ${hasWA(p) ? `<button class="btn wa grow" data-act="msg" data-id="${p.id}">💬 WhatsApp</button>`
-                 : `<button class="btn grow" data-act="edit-person" data-id="${p.id}" title="Add a phone number to enable WhatsApp">💬 Add number</button>`}
-            <button class="btn grow" data-act="log" data-id="${p.id}">✓ Done</button>
-            <button class="btn ghost sm" data-act="log-when" data-id="${p.id}" title="Log an earlier day">▾</button>
-            <button class="btn ghost sm" data-act="snooze" data-id="${p.id}" title="Snooze 3 days">💤</button>
-          </div>
-        </div>`;
-      }).join("") + `</div></section>`;
-  }
-
+  /* ---------- the capped "Right now" list: never show the wall ---------- */
   const todos = visibleTodos(S.todos, todayISO());
-  const openCount = todos.filter(td => !td.done).length;
+  const openTodos = todos.filter(td => !td.done);
   const laterCount = scheduledTodos(S.todos, todayISO()).length;
-  html += `<section class="block"><div class="block-head"><h2>My day</h2><span style="font-size:12.5px;color:var(--muted)">${openCount ? `${openCount} to do` : ""}${openCount && laterCount ? " · " : ""}${laterCount ? `${laterCount} scheduled later` : ""}</span></div>
-    <div class="card" style="padding:5px 18px 10px">
-      ${todos.map(td => {
-        const tp = td.personId ? S.people.find(p => p.id === td.personId) : null;
-        return `<div class="todo-row ${td.done ? "done" : ""}">
-        <button class="todo-check" data-act="todo-toggle" data-id="${td.id}" aria-label="${td.done ? "Mark not done" : "Mark done"}">✓</button>
-        <span class="todo-text">${esc(td.text)}</span>
-        ${tp ? `<span class="chip neutral" style="font-size:11px;flex-shrink:0"><span class="dot" style="background:${avatarColor(tp)}"></span>${esc(tp.name.split(" ")[0])}</span>` : ""}
-        ${!td.done && td.date < todayISO() ? `<span class="chip neutral" style="font-size:11px;flex-shrink:0">from ${fmtNice(td.date).toLowerCase()}</span>` : ""}
-        <button class="btn ghost sm todo-del" data-act="todo-del" data-id="${td.id}" aria-label="Delete">✕</button>
-      </div>`;
-      }).join("")}
-      <form id="todoAddForm" class="todo-add"><input name="text" placeholder="+ Add anything — 'call Amma tomorrow', 'shoes on friday'…" autocomplete="off" maxlength="200"></form>
-    </div></section>`;
+  const allPlans = S.plans.filter(pl => !pl.done).map(pl => ({ pl, dd: daysUntil(pl.date) }));
+  const upcomingPlans = allPlans.filter(x => x.dd <= 7).sort((a, b) => a.dd - b.dd);
 
-  const upcomingPlans = S.plans.filter(pl => !pl.done)
-    .map(pl => ({ pl, dd: daysUntil(pl.date) }))
-    .filter(x => x.dd <= 7)
-    .sort((a, b) => a.dd - b.dd);
-  html += `<section class="block"><div class="block-head"><h2>Plans</h2><button class="more" data-act="add-plan">+ Add plan</button></div>`;
-  if (upcomingPlans.length) {
-    html += `<div class="rows card">` + upcomingPlans.map(({ pl, dd }) => {
-      const person = pl.personId ? S.people.find(p => p.id === pl.personId) : null;
-      return `<div class="row" data-act="edit-plan" data-id="${pl.id}">
-        <div style="font-size:22px;width:40px;text-align:center">📌</div>
-        <div class="info"><div class="name">${esc(pl.title)}</div>
-        <div class="sub">${dd < 0 ? `<span style="color:var(--critical);font-weight:500">was ${fmtNice(pl.date).toLowerCase()}</span>` : `${fmtNice(pl.date)}${dd === 0 ? " — today!" : dd === 1 ? " — tomorrow" : ""}`}${person ? ` · with ${esc(person.name.split(" ")[0])}` : ""}${pl.note ? ` · ${esc(pl.note)}` : ""}</div></div>
-        <div class="side">
-          <button class="btn ghost sm" data-act="plan-gcal" data-id="${pl.id}" title="Add to Google Calendar">📅</button>
-          <button class="btn sm" data-act="plan-done" data-id="${pl.id}">✓</button>
-        </div>
-      </div>`;
-    }).join("") + `</div>`;
-  } else {
-    html += `<div class="card" style="padding:14px 18px;color:var(--muted);font-size:13.5px">Nothing planned — a movie with a friend? A sale to catch? 📌</div>`;
+  const todoRow = td => {
+    const tp = td.personId ? S.people.find(p => p.id === td.personId) : null;
+    return `<div class="todo-row ${td.done ? "done" : ""}">
+      <button class="todo-check" data-act="todo-toggle" data-id="${td.id}" aria-label="${td.done ? "Mark not done" : "Mark done"}">✓</button>
+      <span class="todo-text">${esc(td.text)}</span>
+      ${tp ? `<span class="chip neutral" style="font-size:11px;flex-shrink:0"><span class="dot" style="background:${avatarColor(tp)}"></span>${esc(tp.name.split(" ")[0])}</span>` : ""}
+      ${!td.done && td.date < todayISO() ? `<span class="chip neutral" style="font-size:11px;flex-shrink:0">from ${fmtNice(td.date).toLowerCase()}</span>` : ""}
+      <button class="btn ghost sm todo-del" data-act="todo-del" data-id="${td.id}" aria-label="Delete">✕</button>
+    </div>`;
+  };
+  const planRow = ({ pl, dd }) => {
+    const person = pl.personId ? S.people.find(p => p.id === pl.personId) : null;
+    return `<div class="row" data-act="edit-plan" data-id="${pl.id}">
+      <div style="font-size:22px;width:40px;text-align:center">📌</div>
+      <div class="info"><div class="name">${esc(pl.title)}</div>
+      <div class="sub">${dd < 0 ? `<span style="color:var(--critical);font-weight:500">was ${fmtNice(pl.date).toLowerCase()}</span>` : `${fmtNice(pl.date)}${dd === 0 ? " — today!" : dd === 1 ? " — tomorrow" : ""}`}${person ? ` · with ${esc(person.name.split(" ")[0])}` : ""}${pl.note ? ` · ${esc(pl.note)}` : ""}</div></div>
+      <div class="side">
+        <button class="btn ghost sm" data-act="plan-gcal" data-id="${pl.id}" title="Add to Google Calendar">📅</button>
+        <button class="btn sm" data-act="plan-done" data-id="${pl.id}">✓</button>
+      </div>
+    </div>`;
+  };
+  const routineRow = ({ t, st }) => `<div class="row" data-act="edit-task" data-id="${t.id}">
+      <div style="font-size:22px;width:40px;text-align:center">${t.emoji || "🔁"}</div>
+      <div class="info"><div class="name">${esc(t.name)}</div><div class="sub">${st.dd < 0 ? `<span style="color:var(--critical);font-weight:500">${-st.dd}d overdue</span>` : `due ${inDays(st.dd)}`}</div></div>
+      <div class="side"><button class="btn sm" data-act="task-done" data-id="${t.id}">✓ Done</button></div>
+    </div>`;
+  const occRow = ({ o, date, dd }) => `<div class="row" data-act="open-queue" data-id="${o.id}">
+      <div style="font-size:26px;width:40px;text-align:center">${o.emoji}</div>
+      <div class="info"><div class="name">${esc(o.name)}</div><div class="sub">${fmtNice(date)}${o.approx ? " · moon-dependent, ±1 day" : ""}</div></div>
+      <div class="side"><button class="btn primary sm" data-act="open-queue" data-id="${o.id}">Send wishes</button></div>
+    </div>`;
+  const personCard = ({ p, st, nb }) => {
+    const age = birthdayAge(p);
+    const why = nb !== null && nb <= 1
+      ? `🎂 Birthday ${nb === 0 ? "today" : "tomorrow"}${age ? ` — turns ${age}` : ""}!`
+      : st.status === "late" ? `${st.overdueDays}d overdue · last touch ${agoDays(st.since)}`
+      : `due ${inDays(Math.max(0, daysUntil(st.due)))} · last touch ${agoDays(st.since)}`;
+    return `<div class="focus-card card">
+      <div class="focus-top">${avatarRing(p, st)}
+        <div class="info"><div class="name">${esc(p.name)}</div>
+        <div class="why ${st.status === "late" ? "overdue" : ""}">${why}</div>${noteLine(p)}${(p.topics ?? []).length ? `<div class="focus-topics">💬 bring up: ${esc((p.topics ?? []).join(", "))}</div>` : ""}</div>
+      </div>
+      <div class="focus-actions">
+        ${hasWA(p) ? `<button class="btn wa grow" data-act="msg" data-id="${p.id}">💬 WhatsApp</button>`
+             : `<button class="btn grow" data-act="edit-person" data-id="${p.id}" title="Add a phone number to enable WhatsApp">💬 Add number</button>`}
+        <button class="btn grow" data-act="log" data-id="${p.id}">✓ Done</button>
+        <button class="btn ghost sm" data-act="log-when" data-id="${p.id}" title="Log an earlier day">▾</button>
+        <button class="btn ghost sm" data-act="snooze" data-id="${p.id}" title="Snooze 3 days">💤</button>
+      </div>
+    </div>`;
+  };
+
+  // score the non-person items; people keep their focus-card treatment
+  const pool = [];
+  for (const x of occs.filter(x => x.dd <= 1)) pool.push({ score: 4 - x.dd, html: occRow(x) });
+  for (const x of allPlans.filter(x => x.dd <= 0)) pool.push({ score: 2.5 + Math.min(1, -x.dd * 0.1), html: planRow(x) });
+  for (const x of allPlans.filter(x => x.dd === 1)) pool.push({ score: 0.8, html: planRow(x) });
+  for (const x of lateTasks.filter(x => x.st.dd <= 0)) pool.push({ score: 1.5 + Math.min(1, -x.st.dd * 0.05), html: routineRow(x) });
+  for (const td of openTodos) pool.push({ score: 1 + (td.date < todayISO() ? 0.3 : 0) + (td.personId ? 0.1 : 0), html: todoRow(td) });
+  pool.sort((a, b) => b.score - a.score);
+  const slots = Math.max(2, 5 - focus.length);
+  const nowItems = pool.slice(0, slots);
+  const heldBack = pool.length - nowItems.length;
+
+  html += `<section class="block"><div class="block-head"><h2>Right now</h2>${heldBack > 0 ? `<span style="font-size:12.5px;color:var(--muted)">${heldBack} more waiting quietly</span>` : ""}</div>`;
+  if (focus.length) html += `<div class="focus-grid" style="margin-bottom:14px">${focus.map(personCard).join("")}</div>`;
+  if (nowItems.length) html += `<div class="rows card" style="padding:0 18px">${nowItems.map(x => x.html).join("")}</div>`;
+  if (!focus.length && !nowItems.length) html += `<div class="card" style="padding:26px 24px;text-align:center"><div style="font-size:26px;margin-bottom:6px">✨</div><div style="font-weight:600">Clear.</div><div style="color:var(--ink-2);font-size:14px">Nothing needs you right now — go live your life. Orbit's watching the calendar.</div></div>`;
+  html += `<div class="card" style="margin-top:14px;padding:2px 18px 8px"><form id="todoAddForm" class="todo-add"><input name="text" placeholder="+ Add anything — 'call Amma tomorrow', 'shoes on friday'…" autocomplete="off" maxlength="200"></form></div>
+  </section>`;
+
+  /* ---------- everything else, folded away by default ---------- */
+  let expanded = "";
+  const doneToday = todos.filter(td => td.done);
+  if (openTodos.length || doneToday.length || laterCount) {
+    expanded += `<section class="block"><div class="block-head"><h2>My day</h2><span style="font-size:12.5px;color:var(--muted)">${laterCount ? `${laterCount} scheduled later` : ""}</span></div>
+      <div class="card" style="padding:5px 18px 10px">${todos.map(todoRow).join("")}
+      ${scheduledTodos(S.todos, todayISO()).map(td => `<div class="todo-row" style="opacity:0.65">
+        <span style="width:21px;text-align:center;flex-shrink:0">🕐</span>
+        <span class="todo-text">${esc(td.text)}</span>
+        <span class="chip neutral" style="font-size:11px;flex-shrink:0">${fmtNice(td.date)}</span>
+        <button class="btn ghost sm todo-del" data-act="todo-del" data-id="${td.id}" aria-label="Delete">✕</button>
+      </div>`).join("")}</div></section>`;
   }
-  html += `</section>`;
+  expanded += `<section class="block"><div class="block-head"><h2>Plans</h2><button class="more" data-act="add-plan">+ Add plan</button></div>`;
+  expanded += upcomingPlans.length
+    ? `<div class="rows card">${upcomingPlans.map(planRow).join("")}</div>`
+    : `<div class="card" style="padding:14px 18px;color:var(--muted);font-size:13.5px">Nothing planned — a movie with a friend? A sale to catch? 📌</div>`;
+  expanded += `</section>`;
 
   if (bdays.length) {
-    html += `<section class="block"><div class="block-head"><h2>Birthdays</h2></div><div class="rows card">` +
+    expanded += `<section class="block"><div class="block-head"><h2>Birthdays</h2></div><div class="rows card">` +
       bdays.map(({ p, date, dd }) => {
         const wa = waLink(p, fillTemplate(BDAY_TPL, p));
         const age = birthdayAge(p);
@@ -958,35 +989,32 @@ function renderToday() {
   }
 
   if (occs.length) {
-    html += `<section class="block"><div class="block-head"><h2>Occasions coming up</h2><button class="more" data-act="tab" data-tab="occasions">All occasions →</button></div><div class="rows card">` +
-      occs.map(({ o, date, dd }) => `<div class="row" data-act="open-queue" data-id="${o.id}">
-        <div style="font-size:26px;width:40px;text-align:center">${o.emoji}</div>
-        <div class="info"><div class="name">${esc(o.name)}</div><div class="sub">${fmtNice(date)}${o.approx ? " · moon-dependent, ±1 day" : ""}</div></div>
-        <div class="side"><button class="btn primary sm" data-act="open-queue" data-id="${o.id}">Send wishes</button></div>
-      </div>`).join("") + `</div></section>`;
+    expanded += `<section class="block"><div class="block-head"><h2>Occasions coming up</h2><button class="more" data-act="tab" data-tab="occasions">All occasions →</button></div><div class="rows card">` +
+      occs.map(occRow).join("") + `</div></section>`;
   }
 
   if (lateTasks.length) {
-    html += `<section class="block"><div class="block-head"><h2>Routines</h2></div><div class="rows card">` +
-      lateTasks.map(({ t, st }) => `<div class="row" data-act="edit-task" data-id="${t.id}">
-        <div style="font-size:22px;width:40px;text-align:center">${t.emoji || "🔁"}</div>
-        <div class="info"><div class="name">${esc(t.name)}</div><div class="sub">${st.dd < 0 ? `<span style="color:var(--critical);font-weight:500">${-st.dd}d overdue</span>` : `due ${inDays(st.dd)}`}</div></div>
-        <div class="side"><button class="btn sm" data-act="task-done" data-id="${t.id}">✓ Done</button></div>
-      </div>`).join("") + `</div></section>`;
+    expanded += `<section class="block"><div class="block-head"><h2>Routines</h2></div><div class="rows card">` +
+      lateTasks.map(routineRow).join("") + `</div></section>`;
   }
 
   const rest = urgent.filter(x => !focus.includes(x) && x.st.status !== "late");
   if (rest.length) {
-    html += `<section class="block"><div class="block-head"><h2>Everyone else</h2><button class="more" data-act="tab" data-tab="people">All people →</button></div><div class="rows card">` +
+    expanded += `<section class="block"><div class="block-head"><h2>Everyone else</h2><button class="more" data-act="tab" data-tab="people">All people →</button></div><div class="rows card">` +
       rest.slice(0, 6).map(({ p, st }) => rowPerson(p, st)).join("") + `</div></section>`;
   }
   const snoozedList = S.people.map(p => ({ p, st: personState(p) })).filter(x => x.st.snoozed);
   if (snoozedList.length) {
-    html += `<section class="block"><div class="block-head"><h2>Snoozed</h2></div><div class="rows card">` +
+    expanded += `<section class="block"><div class="block-head"><h2>Snoozed</h2></div><div class="rows card">` +
       snoozedList.map(({ p, st }) => `<div class="row" data-act="edit-person" data-id="${p.id}">
         <div class="info"><div class="name">${esc(p.name)}</div><div class="sub">💤 until ${fmtNice(p.snoozedUntil)}</div></div>
         <div class="side"><button class="btn ghost sm" data-act="unsnooze" data-id="${p.id}">Wake</button></div></div>`).join("") + `</div></section>`;
   }
+
+  const foldCount = todos.length + laterCount + upcomingPlans.length + bdays.length + occs.length + lateTasks.length + Math.min(6, rest.length) + snoozedList.length;
+  html += showAll
+    ? `<div style="text-align:center;margin:-6px 0 22px"><button class="btn ghost" data-act="toggle-show-all">Tuck it all away ▴</button></div>` + expanded
+    : `<div style="text-align:center;margin:-6px 0 22px"><button class="btn ghost" data-act="toggle-show-all">Show everything${foldCount ? ` (${foldCount})` : ""} ▾</button></div>`;
   return html;
 }
 
@@ -1777,6 +1805,7 @@ document.addEventListener("click", e => {
     }
     case "open-queue": e.stopPropagation(); queueModal(id); break;
     case "open-review": reviewModal(); break;
+    case "toggle-show-all": showAll = !showAll; render(); break;
     case "todo-toggle": {
       e.stopPropagation();
       const td = S.todos.find(x => x.id === id);
@@ -2251,6 +2280,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
 const _q = new URLSearchParams(location.search);
 if (_q.has("demo") && !S.people.length) { const s = SAMPLE(); S.people.push(...s.people); S.tasks.push(...s.tasks); S.plans.push(...s.plans); S.todos.push(...s.todos); save(); }
 if (TABS.some(t => t.id === _q.get("tab"))) activeTab = _q.get("tab");
+if (_q.has("showall")) showAll = true; // test hook
 window.addEventListener("error", e => { const d = document.createElement("div"); d.id = "jserror"; d.style.display = "none"; d.textContent = e.message; document.body.appendChild(d); });
 render();
 /* ?selftest — machine-checkable assertions for automated verification */
