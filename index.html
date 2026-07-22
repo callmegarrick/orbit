@@ -125,6 +125,25 @@ section.block { margin-bottom: 28px; }
 .focus-top .why { font-size: 13px; color: var(--ink-2); }
 .focus-top .why.overdue { color: var(--critical); font-weight: 500; }
 .lastnote { font-size: 12.5px; color: var(--muted); margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------- my day todos ---------- */
+.todo-row { display: flex; align-items: center; gap: 11px; padding: 9px 0; border-bottom: 1px solid var(--hairline); }
+.todo-check {
+  width: 21px; height: 21px; border-radius: 7px; border: 1.5px solid var(--muted);
+  background: none; display: flex; align-items: center; justify-content: center;
+  color: transparent; flex-shrink: 0; cursor: pointer; font-size: 12px; font-weight: 700; padding: 0;
+}
+.todo-check:hover { border-color: var(--good); }
+.todo-row.done .todo-check { background: var(--good); border-color: var(--good); color: #fff; }
+.todo-text { flex: 1; font-size: 14.5px; min-width: 0; overflow-wrap: break-word; }
+.todo-row.done .todo-text { text-decoration: line-through; color: var(--muted); }
+.todo-del { opacity: 0; }
+.todo-row:hover .todo-del { opacity: 1; }
+.todo-add input {
+  width: 100%; font: inherit; font-size: 14.5px; color: var(--ink);
+  background: none; border: none; padding: 10px 0 4px; outline: none;
+}
+.todo-add input::placeholder { color: var(--muted); }
 .focus-actions { display: flex; gap: 8px; }
 
 /* ---------- Buttons ---------- */
@@ -410,6 +429,7 @@ const DEFAULTS = {
   people: [],
   tasks: [],
   plans: [],
+  todos: [],
   occasions: BUILTIN_OCCASIONS.map(o => ({ ...o, enabled: true, done: {} })),
   settings: { birthdayLead: 7, occasionLead: 3, lastNotified: {} },
 };
@@ -426,6 +446,8 @@ function load() {
     }
     data.settings = Object.assign({ birthdayLead: 7, occasionLead: 3, lastNotified: {} }, data.settings);
     data.plans = data.plans ?? [];
+    // done to-dos fade out after a week; undone ones carry forward forever
+    data.todos = (data.todos ?? []).filter(td => !td.done || !td.doneAt || daysSince(td.doneAt) <= 7);
     return data;
   } catch (e) { console.error("load failed", e); return structuredClone(DEFAULTS); }
 }
@@ -633,6 +655,11 @@ function emptyState() {
 }
 
 /* ---------- Today ---------- */
+function visibleTodos(todos, today) {
+  return todos
+    .filter(td => !td.done || td.doneAt === today)
+    .sort((a, b) => (a.done === b.done ? ((a.createdAt ?? "") > (b.createdAt ?? "") ? 1 : -1) : a.done ? 1 : -1));
+}
 function onThisDay() {
   const t = todayISO();
   for (const [days, label] of [[365, "A year ago"], [183, "Six months ago"]]) {
@@ -722,6 +749,19 @@ function renderToday() {
         </div>`;
       }).join("") + `</div></section>`;
   }
+
+  const todos = visibleTodos(S.todos, todayISO());
+  const openCount = todos.filter(td => !td.done).length;
+  html += `<section class="block"><div class="block-head"><h2>My day</h2>${openCount ? `<span style="font-size:12.5px;color:var(--muted)">${openCount} to do</span>` : ""}</div>
+    <div class="card" style="padding:5px 18px 10px">
+      ${todos.map(td => `<div class="todo-row ${td.done ? "done" : ""}">
+        <button class="todo-check" data-act="todo-toggle" data-id="${td.id}" aria-label="${td.done ? "Mark not done" : "Mark done"}">✓</button>
+        <span class="todo-text">${esc(td.text)}</span>
+        ${!td.done && td.date < todayISO() ? `<span class="chip neutral" style="font-size:11px;flex-shrink:0">from ${fmtNice(td.date).toLowerCase()}</span>` : ""}
+        <button class="btn ghost sm todo-del" data-act="todo-del" data-id="${td.id}" aria-label="Delete">✕</button>
+      </div>`).join("")}
+      <form id="todoAddForm" class="todo-add"><input name="text" placeholder="+ Add something to do today — press Enter" autocomplete="off" maxlength="200"></form>
+    </div></section>`;
 
   const upcomingPlans = S.plans.filter(pl => !pl.done)
     .map(pl => ({ pl, dd: daysUntil(pl.date) }))
@@ -1459,6 +1499,10 @@ const SAMPLE = () => {
       { id: uid(), title: "Movie with Rohan", date: addDays(t, 2), personId: people[2].id, note: "", done: false, sample: true },
       { id: uid(), title: "Decathlon sale", date: addDays(t, 5), personId: "", note: "running shoes", done: false, sample: true },
     ],
+    todos: [
+      { id: uid(), text: "Book the dentist slot", date: t, createdAt: new Date().toISOString(), done: false, sample: true },
+      { id: uid(), text: "Reply to the landlord", date: addDays(t, -1), createdAt: new Date(Date.now() - 864e5).toISOString(), done: false, sample: true },
+    ],
   };
 };
 
@@ -1546,6 +1590,22 @@ document.addEventListener("click", e => {
     }
     case "open-queue": e.stopPropagation(); queueModal(id); break;
     case "open-review": reviewModal(); break;
+    case "todo-toggle": {
+      e.stopPropagation();
+      const td = S.todos.find(x => x.id === id);
+      td.done = !td.done;
+      td.doneAt = td.done ? todayISO() : null;
+      save(); render();
+      break;
+    }
+    case "todo-del": {
+      e.stopPropagation();
+      const td = S.todos.find(x => x.id === id);
+      S.todos = S.todos.filter(x => x.id !== id);
+      save(); render();
+      toast(`Removed "${td.text.slice(0, 30)}${td.text.length > 30 ? "…" : ""}"`, () => { S.todos.push(td); save(); render(); });
+      break;
+    }
     case "add-plan": e.stopPropagation(); planModal(null, el.dataset.date); break;
     case "edit-plan": e.stopPropagation(); planModal(S.plans.find(x => x.id === id)); break;
     case "del-plan": {
@@ -1619,7 +1679,7 @@ document.addEventListener("click", e => {
     case "cal-day": calSelected = el.dataset.date; render(); break;
     case "load-sample": {
       const s = SAMPLE();
-      S.people.push(...s.people); S.tasks.push(...s.tasks); S.plans.push(...s.plans);
+      S.people.push(...s.people); S.tasks.push(...s.tasks); S.plans.push(...s.plans); S.todos.push(...s.todos);
       save(); render(); toast("Example data loaded — remove it any time in Settings");
       break;
     }
@@ -1627,6 +1687,7 @@ document.addEventListener("click", e => {
       S.people = S.people.filter(p => !p.sample);
       S.tasks = S.tasks.filter(t => !t.sample);
       S.plans = S.plans.filter(pl => !pl.sample);
+      S.todos = S.todos.filter(td => !td.sample);
       save(); render(); toast("Example data removed");
       break;
     }
@@ -1700,6 +1761,12 @@ document.addEventListener("submit", e => {
     if (id) Object.assign(S.tasks.find(t => t.id === id), data);
     else S.tasks.push({ id: uid(), createdAt: todayISO(), ...data });
     save(); closeModal(); render();
+  } else if (f.id === "todoAddForm") {
+    const text = (fd.get("text") ?? "").trim();
+    if (!text) return;
+    S.todos.push({ id: uid(), text, date: todayISO(), createdAt: new Date().toISOString(), done: false });
+    save(); render();
+    setTimeout(() => { const inp = $("#todoAddForm input"); if (inp) inp.focus(); }, 30);
   } else if (f.id === "planForm") {
     const id = f.dataset.id;
     const data = {
@@ -1955,7 +2022,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
 
 /* ---------- boot ---------- */
 const _q = new URLSearchParams(location.search);
-if (_q.has("demo") && !S.people.length) { const s = SAMPLE(); S.people.push(...s.people); S.tasks.push(...s.tasks); S.plans.push(...s.plans); save(); }
+if (_q.has("demo") && !S.people.length) { const s = SAMPLE(); S.people.push(...s.people); S.tasks.push(...s.tasks); S.plans.push(...s.plans); S.todos.push(...s.todos); save(); }
 if (TABS.some(t => t.id === _q.get("tab"))) activeTab = _q.get("tab");
 window.addEventListener("error", e => { const d = document.createElement("div"); d.id = "jserror"; d.style.display = "none"; d.textContent = e.message; document.body.appendChild(d); });
 render();
@@ -1987,6 +2054,12 @@ if (_q.has("selftest")) setTimeout(() => {
   ok("gcal title encoded", gl.includes("text=Test%20%26%20go"));
   const otdRes = onThisDay();
   ok("onThisDay safe", otdRes === null || (typeof otdRes.note === "string" && !!otdRes.p));
+  const vt = visibleTodos([
+    { id: "a", text: "old undone", date: "2026-01-01", createdAt: "1", done: false },
+    { id: "b", text: "old done", date: "2026-01-01", done: true, doneAt: "2026-01-02" },
+    { id: "c", text: "done today", date: todayISO(), createdAt: "2", done: true, doneAt: todayISO() },
+  ], todayISO());
+  ok("todos rollover + filter", vt.length === 2 && vt[0].id === "a" && vt[1].id === "c");
   ok("age turns 30", birthdayAge({ birthday: `${todayDate().getFullYear() - 30}-12-31` }) === 30);
   const d = document.createElement("div"); d.id = "selftest"; d.style.display = "none";
   d.textContent = t.join(" | ");

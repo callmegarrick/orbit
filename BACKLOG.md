@@ -23,6 +23,8 @@ Priorities: lower friction to act · make the daily 10-second check-in stick · 
 
 - [x] Stage 03 **Memory** (2026-07-21): "Their people" field per person (partner/kids/pets — shown in a recap block at the top of the person modal along with the last 3 noted moments, i.e. the pre-call recap card); "on this day" hero line resurfacing noted conversations from ~6 and ~12 months back (±2 days) with a follow-up nudge. SW v5. Selftest 20 assertions.
 
+- [x] **My day** (2026-07-21, Garrick's request): lightweight daily to-do space on the Today tab — inline quick-add (Enter to add, stays focused for rapid entry), tap-to-complete, undone items roll over with a "from yesterday" tag, done items fade out after 7 days, delete with undo. Deliberately minimal: no projects/priorities/tags — it's a day list, not a task manager. SW v6. Selftest 21 assertions.
+
 ## Boundary-pushing loop (started 2026-07-11)
 See [IDEAS.md](IDEAS.md) — brainstorm ledger with verdicts. Iteration 1 shipped `orbit-notify.ps1` + `setup-morning-toast.bat`: native Windows toasts with real names, browser fully closed.
 
