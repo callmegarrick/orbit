@@ -25,6 +25,8 @@ Priorities: lower friction to act · make the daily 10-second check-in stick · 
 
 - [x] **My day** (2026-07-21, Garrick's request): lightweight daily to-do space on the Today tab — inline quick-add (Enter to add, stays focused for rapid entry), tap-to-complete, undone items roll over with a "from yesterday" tag, done items fade out after 7 days, delete with undo. Deliberately minimal: no projects/priorities/tags — it's a day list, not a task manager. SW v6. Selftest 21 assertions.
 
+- [x] **Message tones & starter picker** (2026-07-22, prompted by real feedback — Lena spotted the identical canned template): per-person tone (Warm / Respectful / Fun & quirky). WhatsApp button now opens a picker with 3 rotating tone-matched starters (shuffle for more), the last note shown as context, an editable box, and "open chat blank." Nothing auto-sends. Kills the "same generic line every time" tell. SW v7. Selftest 26 assertions. Verified both tones live in browser.
+
 ## Boundary-pushing loop (started 2026-07-11)
 See [IDEAS.md](IDEAS.md) — brainstorm ledger with verdicts. Iteration 1 shipped `orbit-notify.ps1` + `setup-morning-toast.bat`: native Windows toasts with real names, browser fully closed.
 
