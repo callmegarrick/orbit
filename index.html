@@ -149,6 +149,7 @@ section.block { margin-bottom: 28px; }
 .topic-add input { width: 100%; font: inherit; font-size: 13.5px; color: var(--ink); background: var(--page); border: 1px solid var(--border); border-radius: 9px; padding: 8px 11px; outline: none; }
 .topic-add input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .focus-topics { font-size: 12.5px; color: color-mix(in srgb, var(--magenta) 70%, var(--ink)); margin-top: 3px; }
+.alt-channels { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: -4px 0 4px; }
 
 /* ---------- my day todos ---------- */
 .todo-row { display: flex; align-items: center; gap: 11px; padding: 9px 0; border-bottom: 1px solid var(--hairline); }
@@ -682,6 +683,11 @@ function msgModal(id) {
       <div class="field"><label>Your message</label>
         <textarea name="text" rows="3" placeholder="Write your own, or tap a starter above…">${esc(fillTemplate(starters[0], p))}</textarea>
         <div class="hint">Nothing sends automatically — WhatsApp opens with this ready, you press send.</div></div>
+      <div class="alt-channels">
+        <span style="font-size:12.5px;color:var(--muted)">Or reach ${first} by</span>
+        <a class="btn sm" href="tel:+${(p.phone ?? "").replace(/\D/g, "")}" data-act="alt-reach" data-id="${id}">📞 Call</a>
+        <a class="btn sm" href="sms:+${(p.phone ?? "").replace(/\D/g, "")}?body=${encodeURIComponent(fillTemplate(starters[0], p))}" data-act="alt-reach" data-id="${id}">💬 SMS</a>
+      </div>
       <div class="modal-actions">
         <button type="button" class="btn left" data-act="msg-blank" data-id="${id}">Open chat blank</button>
         <button type="button" class="btn" data-act="close">Cancel</button>
@@ -1648,6 +1654,7 @@ document.addEventListener("click", e => {
     case "log": e.stopPropagation(); logTouch(id); break;
     case "msg": e.stopPropagation(); msgModal(id); break;
     case "msg-shuffle": msgModal(id); break;
+    case "alt-reach": { const p = S.people.find(x => x.id === id); closeModal(); if (p) offerLog(p); break; }
     case "topic-del": {
       const p = S.people.find(x => x.id === id);
       p.topics = (p.topics ?? []).filter((_, i) => i !== Number(el.dataset.i));
