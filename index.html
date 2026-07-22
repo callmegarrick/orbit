@@ -776,6 +776,8 @@ const TABS = [
 ];
 let activeTab = "today";
 let showAll = false;
+let rightNowSnapshot = [];
+let focusQueue = null, focusIdx = 0;
 let calCursor = null; // {y, m}
 let calSelected = null;
 
@@ -939,17 +941,18 @@ function renderToday() {
 
   // score the non-person items; people keep their focus-card treatment
   const pool = [];
-  for (const x of occs.filter(x => x.dd <= 1)) pool.push({ score: 4 - x.dd, html: occRow(x) });
-  for (const x of allPlans.filter(x => x.dd <= 0)) pool.push({ score: 2.5 + Math.min(1, -x.dd * 0.1), html: planRow(x) });
-  for (const x of allPlans.filter(x => x.dd === 1)) pool.push({ score: 0.8, html: planRow(x) });
-  for (const x of lateTasks.filter(x => x.st.dd <= 0)) pool.push({ score: 1.5 + Math.min(1, -x.st.dd * 0.05), html: routineRow(x) });
-  for (const td of openTodos) pool.push({ score: 1 + (td.date < todayISO() ? 0.3 : 0) + (td.personId ? 0.1 : 0), html: todoRow(td) });
+  for (const x of occs.filter(x => x.dd <= 1)) pool.push({ score: 4 - x.dd, kind: "occ", id: x.o.id, html: occRow(x) });
+  for (const x of allPlans.filter(x => x.dd <= 0)) pool.push({ score: 2.5 + Math.min(1, -x.dd * 0.1), kind: "plan", id: x.pl.id, html: planRow(x) });
+  for (const x of allPlans.filter(x => x.dd === 1)) pool.push({ score: 0.8, kind: "plan", id: x.pl.id, html: planRow(x) });
+  for (const x of lateTasks.filter(x => x.st.dd <= 0)) pool.push({ score: 1.5 + Math.min(1, -x.st.dd * 0.05), kind: "routine", id: x.t.id, html: routineRow(x) });
+  for (const td of openTodos) pool.push({ score: 1 + (td.date < todayISO() ? 0.3 : 0) + (td.personId ? 0.1 : 0), kind: "todo", id: td.id, html: todoRow(td) });
   pool.sort((a, b) => b.score - a.score);
   const slots = Math.max(2, 5 - focus.length);
   const nowItems = pool.slice(0, slots);
   const heldBack = pool.length - nowItems.length;
+  rightNowSnapshot = [...focus.map(x => ({ kind: "person", id: x.p.id })), ...nowItems.map(x => ({ kind: x.kind, id: x.id }))];
 
-  html += `<section class="block"><div class="block-head"><h2>Right now</h2>${heldBack > 0 ? `<span style="font-size:12.5px;color:var(--muted)">${heldBack} more waiting quietly</span>` : ""}</div>`;
+  html += `<section class="block"><div class="block-head"><h2>Right now</h2><span>${heldBack > 0 ? `<span style="font-size:12.5px;color:var(--muted)">${heldBack} more waiting quietly · </span>` : ""}${rightNowSnapshot.length ? `<button class="more" data-act="focus-start">▶ Focus</button>` : ""}</span></div>`;
   if (focus.length) html += `<div class="focus-grid" style="margin-bottom:14px">${focus.map(personCard).join("")}</div>`;
   if (nowItems.length) html += `<div class="rows card" style="padding:0 18px">${nowItems.map(x => x.html).join("")}</div>`;
   if (!focus.length && !nowItems.length) html += `<div class="card" style="padding:26px 24px;text-align:center"><div style="font-size:26px;margin-bottom:6px">✨</div><div style="font-weight:600">Clear.</div><div style="color:var(--ink-2);font-size:14px">Nothing needs you right now — go live your life. Orbit's watching the calendar.</div></div>`;
@@ -1607,6 +1610,71 @@ function reviewModal() {
     <div class="modal-actions"><button class="btn primary" data-act="close">Done</button></div>`);
 }
 
+/* ---------- focus mode: one card at a time ---------- */
+function focusItemData(item) {
+  if (item.kind === "person") {
+    const p = S.people.find(x => x.id === item.id);
+    if (!p) return null;
+    const st = personState(p);
+    return { emoji: null, avatar: p, title: p.name,
+      sub: `${st.status === "late" ? `${st.overdueDays}d overdue · ` : ""}last touch ${st.everContacted ? agoDays(st.since) : "never"}${(p.topics ?? []).length ? `<br>💬 bring up: ${esc(p.topics.join(", "))}` : ""}`,
+      canMsg: hasWA(p) };
+  }
+  if (item.kind === "todo") {
+    const td = S.todos.find(x => x.id === item.id);
+    if (!td || td.done) return null;
+    const tp = td.personId ? S.people.find(p => p.id === td.personId) : null;
+    return { emoji: "☑️", title: td.text, sub: tp ? `linked to ${esc(tp.name.split(" ")[0])}` : "" };
+  }
+  if (item.kind === "plan") {
+    const pl = S.plans.find(x => x.id === item.id);
+    if (!pl || pl.done) return null;
+    return { emoji: "📌", title: pl.title, sub: fmtNice(pl.date) };
+  }
+  if (item.kind === "routine") {
+    const t = S.tasks.find(x => x.id === item.id);
+    if (!t) return null;
+    const st = taskState(t);
+    return { emoji: t.emoji || "🔁", title: t.name, sub: st.dd < 0 ? `${-st.dd}d overdue` : "due today" };
+  }
+  if (item.kind === "occ") {
+    const o = S.occasions.find(x => x.id === item.id);
+    if (!o) return null;
+    return { emoji: o.emoji, title: `${o.name} wishes`, sub: "open the wish queue", isOcc: true };
+  }
+  return null;
+}
+function focusModal() {
+  while (focusIdx < focusQueue.length && !focusItemData(focusQueue[focusIdx])) focusIdx++;
+  if (focusIdx >= focusQueue.length) {
+    openModal(`
+      <div style="text-align:center;padding:12px 0">
+        <div style="font-size:40px;margin-bottom:8px">✨</div>
+        <h2 class="serif" style="margin-bottom:6px">Clear.</h2>
+        <p style="color:var(--ink-2)">That's everything that needed you. Go live your life.</p>
+        <div class="modal-actions" style="justify-content:center"><button class="btn primary" data-act="focus-end">Done</button></div>
+      </div>`);
+    return;
+  }
+  const item = focusQueue[focusIdx];
+  const d = focusItemData(item);
+  openModal(`
+    <div style="text-align:center;padding:4px 0">
+      <div style="font-size:12.5px;color:var(--muted);margin-bottom:14px">${focusIdx + 1} of ${focusQueue.length} · Esc to exit</div>
+      ${d.avatar ? `<div style="display:flex;justify-content:center;margin-bottom:10px">${avatarRing(d.avatar, personState(d.avatar), true)}</div>` : `<div style="font-size:40px;margin-bottom:8px">${d.emoji}</div>`}
+      <h2 class="serif" style="margin-bottom:4px">${esc(d.title)}</h2>
+      <p style="color:var(--ink-2);font-size:14px;margin-bottom:18px">${d.sub || ""}</p>
+      <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+        ${d.isOcc ? `<button class="btn primary" data-act="focus-occ" data-id="${item.id}">Send wishes</button>`
+          : `${d.canMsg ? `<button class="btn wa" data-act="focus-msg" data-id="${item.id}">💬 Message</button>` : ""}
+             <button class="btn primary" data-act="focus-done">✓ Done</button>
+             ${item.kind !== "routine" ? `<button class="btn" data-act="focus-push">→ Tomorrow</button>` : ""}`}
+        <button class="btn ghost" data-act="focus-skip">Skip</button>
+      </div>
+    </div>`);
+}
+function focusAdvance() { focusIdx++; focusModal(); }
+
 /* ---------- toast ---------- */
 let toastTimer = null, undoFn = null;
 function toast(msg, undo) {
@@ -1806,6 +1874,47 @@ document.addEventListener("click", e => {
     case "open-queue": e.stopPropagation(); queueModal(id); break;
     case "open-review": reviewModal(); break;
     case "toggle-show-all": showAll = !showAll; render(); break;
+    case "focus-start": focusQueue = [...rightNowSnapshot]; focusIdx = 0; focusModal(); break;
+    case "focus-end": closeModal(); render(); break;
+    case "focus-skip": focusAdvance(); break;
+    case "focus-msg": { closeModal(); msgModal(id); break; }
+    case "focus-occ": { closeModal(); queueModal(id); break; }
+    case "focus-done": {
+      const item = focusQueue[focusIdx];
+      const today = todayISO();
+      if (item.kind === "person") {
+        const p = S.people.find(x => x.id === item.id);
+        if (p) { p.interactions = p.interactions ?? []; p.interactions.push({ date: today }); p.snoozedUntil = null; }
+      } else if (item.kind === "todo") {
+        const td = S.todos.find(x => x.id === item.id);
+        if (td) {
+          td.done = true; td.doneAt = today;
+          const tp = td.personId ? S.people.find(p => p.id === td.personId) : null;
+          if (tp) { tp.interactions = tp.interactions ?? []; tp.interactions.push({ date: today, note: td.text }); tp.snoozedUntil = null; }
+        }
+      } else if (item.kind === "plan") {
+        const pl = S.plans.find(x => x.id === item.id);
+        if (pl) {
+          pl.done = true; pl.doneAt = today;
+          const tp = pl.personId ? S.people.find(p => p.id === pl.personId) : null;
+          if (tp) { tp.interactions = tp.interactions ?? []; tp.interactions.push({ date: today, note: pl.title }); tp.snoozedUntil = null; }
+        }
+      } else if (item.kind === "routine") {
+        const t = S.tasks.find(x => x.id === item.id);
+        if (t) t.lastDone = today;
+      }
+      save(); focusAdvance();
+      break;
+    }
+    case "focus-push": {
+      const item = focusQueue[focusIdx];
+      const tmrw = addDays(todayISO(), 1);
+      if (item.kind === "person") { const p = S.people.find(x => x.id === item.id); if (p) p.snoozedUntil = tmrw; }
+      else if (item.kind === "todo") { const td = S.todos.find(x => x.id === item.id); if (td) td.date = tmrw; }
+      else if (item.kind === "plan") { const pl = S.plans.find(x => x.id === item.id); if (pl) pl.date = tmrw; }
+      save(); focusAdvance();
+      break;
+    }
     case "todo-toggle": {
       e.stopPropagation();
       const td = S.todos.find(x => x.id === id);
@@ -2281,6 +2390,7 @@ const _q = new URLSearchParams(location.search);
 if (_q.has("demo") && !S.people.length) { const s = SAMPLE(); S.people.push(...s.people); S.tasks.push(...s.tasks); S.plans.push(...s.plans); S.todos.push(...s.todos); save(); }
 if (TABS.some(t => t.id === _q.get("tab"))) activeTab = _q.get("tab");
 if (_q.has("showall")) showAll = true; // test hook
+if (_q.has("focus")) setTimeout(() => { focusQueue = [...rightNowSnapshot]; focusIdx = 0; focusModal(); }, 400); // test hook
 window.addEventListener("error", e => { const d = document.createElement("div"); d.id = "jserror"; d.style.display = "none"; d.textContent = e.message; document.body.appendChild(d); });
 render();
 /* ?selftest — machine-checkable assertions for automated verification */
