@@ -641,6 +641,43 @@ function pickStarters(tone, n) {
 }
 const hasWA = p => !!(p.phone ?? "").replace(/\D/g, "");
 const parseTopics = raw => String(raw ?? "").split("\n").map(s => s.trim()).filter(Boolean).slice(0, 20);
+
+/* ---------- smart capture: "call Amma tomorrow" → intention with person + date ---------- */
+const WEEKDAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+function parseCapture(raw) {
+  let text = String(raw ?? "").trim();
+  let date = todayISO();
+  let matched = null;
+  const lower = text.toLowerCase();
+  if (/\btomorrow\b/.test(lower)) { date = addDays(todayISO(), 1); matched = /\s*\btomorrow\b/i; }
+  else if (/\btoday\b/.test(lower)) { matched = /\s*\btoday\b/i; }
+  else {
+    const wd = WEEKDAYS.findIndex(w => new RegExp(`\\b(?:on\\s+)?${w}\\b`).test(lower));
+    if (wd >= 0) {
+      const t = todayDate();
+      let diff = (wd - t.getDay() + 7) % 7;
+      if (diff === 0) diff = 7;
+      date = addDays(todayISO(), diff);
+      matched = new RegExp(`\\s*\\b(?:on\\s+)?${WEEKDAYS[wd]}\\b`, "i");
+    } else {
+      const m = lower.match(/\bon (?:the )?(\d{1,2})(?:st|nd|rd|th)?\b/);
+      if (m && +m[1] >= 1 && +m[1] <= 31) {
+        const t = todayDate();
+        let cand = new Date(t.getFullYear(), t.getMonth(), +m[1]);
+        if (cand <= t) cand = new Date(t.getFullYear(), t.getMonth() + 1, +m[1]);
+        date = iso(cand);
+        matched = new RegExp("\\s*" + m[0].replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+      }
+    }
+  }
+  if (matched) text = text.replace(matched, " ").replace(/\s{2,}/g, " ").trim().replace(/[,;]\s*$/, "");
+  let personId = "";
+  for (const p of S.people) {
+    const first = p.name.split(" ")[0];
+    if (first.length >= 3 && new RegExp(`\\b${first.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(text)) { personId = p.id; break; }
+  }
+  return { text, date, personId };
+}
 function offerLog(p) {
   const t = $("#toast");
   undoFn = null;
@@ -770,8 +807,11 @@ function emptyState() {
 /* ---------- Today ---------- */
 function visibleTodos(todos, today) {
   return todos
-    .filter(td => !td.done || td.doneAt === today)
+    .filter(td => (!td.done && (td.date ?? today) <= today) || (td.done && td.doneAt === today))
     .sort((a, b) => (a.done === b.done ? ((a.createdAt ?? "") > (b.createdAt ?? "") ? 1 : -1) : a.done ? 1 : -1));
+}
+function scheduledTodos(todos, today) {
+  return todos.filter(td => !td.done && (td.date ?? today) > today).sort((a, b) => (a.date > b.date ? 1 : -1));
 }
 function onThisDay() {
   const t = todayISO();
@@ -865,15 +905,20 @@ function renderToday() {
 
   const todos = visibleTodos(S.todos, todayISO());
   const openCount = todos.filter(td => !td.done).length;
-  html += `<section class="block"><div class="block-head"><h2>My day</h2>${openCount ? `<span style="font-size:12.5px;color:var(--muted)">${openCount} to do</span>` : ""}</div>
+  const laterCount = scheduledTodos(S.todos, todayISO()).length;
+  html += `<section class="block"><div class="block-head"><h2>My day</h2><span style="font-size:12.5px;color:var(--muted)">${openCount ? `${openCount} to do` : ""}${openCount && laterCount ? " · " : ""}${laterCount ? `${laterCount} scheduled later` : ""}</span></div>
     <div class="card" style="padding:5px 18px 10px">
-      ${todos.map(td => `<div class="todo-row ${td.done ? "done" : ""}">
+      ${todos.map(td => {
+        const tp = td.personId ? S.people.find(p => p.id === td.personId) : null;
+        return `<div class="todo-row ${td.done ? "done" : ""}">
         <button class="todo-check" data-act="todo-toggle" data-id="${td.id}" aria-label="${td.done ? "Mark not done" : "Mark done"}">✓</button>
         <span class="todo-text">${esc(td.text)}</span>
+        ${tp ? `<span class="chip neutral" style="font-size:11px;flex-shrink:0"><span class="dot" style="background:${avatarColor(tp)}"></span>${esc(tp.name.split(" ")[0])}</span>` : ""}
         ${!td.done && td.date < todayISO() ? `<span class="chip neutral" style="font-size:11px;flex-shrink:0">from ${fmtNice(td.date).toLowerCase()}</span>` : ""}
         <button class="btn ghost sm todo-del" data-act="todo-del" data-id="${td.id}" aria-label="Delete">✕</button>
-      </div>`).join("")}
-      <form id="todoAddForm" class="todo-add"><input name="text" placeholder="+ Add something to do today — press Enter" autocomplete="off" maxlength="200"></form>
+      </div>`;
+      }).join("")}
+      <form id="todoAddForm" class="todo-add"><input name="text" placeholder="+ Add anything — 'call Amma tomorrow', 'shoes on friday'…" autocomplete="off" maxlength="200"></form>
     </div></section>`;
 
   const upcomingPlans = S.plans.filter(pl => !pl.done)
@@ -1629,6 +1674,7 @@ const SAMPLE = () => {
     todos: [
       { id: uid(), text: "Book the dentist slot", date: t, createdAt: new Date().toISOString(), done: false, sample: true },
       { id: uid(), text: "Reply to the landlord", date: addDays(t, -1), createdAt: new Date(Date.now() - 864e5).toISOString(), done: false, sample: true },
+      { id: uid(), text: "Pick up the parcel", date: addDays(t, 2), createdAt: new Date().toISOString(), done: false, sample: true },
     ],
   };
 };
@@ -1736,7 +1782,19 @@ document.addEventListener("click", e => {
       const td = S.todos.find(x => x.id === id);
       td.done = !td.done;
       td.doneAt = td.done ? todayISO() : null;
+      const tp = td.personId ? S.people.find(p => p.id === td.personId) : null;
+      if (tp) {
+        tp.interactions = tp.interactions ?? [];
+        if (td.done) {
+          tp.interactions.push({ date: todayISO(), note: td.text });
+          tp.snoozedUntil = null;
+        } else {
+          const i = tp.interactions.findIndex(x => x.date === todayISO() && x.note === td.text);
+          if (i >= 0) tp.interactions.splice(i, 1);
+        }
+      }
       save(); render();
+      if (td.done && tp) toast(`✓ counted as a touch with ${tp.name.split(" ")[0]}`);
       break;
     }
     case "todo-del": {
@@ -1925,10 +1983,16 @@ document.addEventListener("submit", e => {
     closeModal();
     offerLog(p);
   } else if (f.id === "todoAddForm") {
-    const text = (fd.get("text") ?? "").trim();
-    if (!text) return;
-    S.todos.push({ id: uid(), text, date: todayISO(), createdAt: new Date().toISOString(), done: false });
+    const raw = (fd.get("text") ?? "").trim();
+    if (!raw) return;
+    const cap = parseCapture(raw);
+    if (!cap.text) return;
+    S.todos.push({ id: uid(), text: cap.text, date: cap.date, personId: cap.personId, createdAt: new Date().toISOString(), done: false });
     save(); render();
+    const bits = [];
+    if (cap.date !== todayISO()) bits.push(fmtNice(cap.date));
+    if (cap.personId) bits.push(`linked to ${S.people.find(p => p.id === cap.personId)?.name.split(" ")[0]}`);
+    toast(`Got it${bits.length ? " — " + bits.join(" · ") : ""} ✓`);
     setTimeout(() => { const inp = $("#todoAddForm input"); if (inp) inp.focus(); }, 30);
   } else if (f.id === "planForm") {
     const id = f.dataset.id;
@@ -2231,6 +2295,16 @@ if (_q.has("selftest")) setTimeout(() => {
   ok("fillTemplate first name", fillTemplate("Hi {name}!", { name: "Lena Joy" }) === "Hi Lena!");
   ok("parseTopics lines", JSON.stringify(parseTopics(" trip \n\n knee surgery ")) === JSON.stringify(["trip", "knee surgery"]));
   ok("templates no em-dash", ![NUDGE_TPL, OCC_TPL, BELATED_TPL, ...MSG_LIBRARY.warm, ...MSG_LIBRARY.respectful, ...MSG_LIBRARY.playful].some(s => s.includes("—")));
+  const cap1 = parseCapture("buy shoes tomorrow");
+  ok("capture strips date word", cap1.date === addDays(todayISO(), 1) && cap1.text === "buy shoes");
+  const cap2 = parseCapture("gym on friday");
+  ok("capture weekday is future", daysUntil(cap2.date) >= 1 && daysUntil(cap2.date) <= 7 && cap2.text === "gym");
+  const cap3 = parseCapture("water the plants");
+  ok("capture plain defaults today", cap3.date === todayISO() && cap3.text === "water the plants" && cap3.personId === "");
+  const ammaP = S.people.find(p => p.name.split(" ")[0] === "Amma");
+  ok("capture links person", !ammaP || parseCapture("call Amma tomorrow").personId === ammaP.id);
+  ok("future todos hidden", visibleTodos([{ id: "f", text: "x", date: addDays(todayISO(), 3), done: false }], todayISO()).length === 0);
+  ok("scheduled count", scheduledTodos([{ id: "f", text: "x", date: addDays(todayISO(), 3), done: false }], todayISO()).length === 1);
   ok("age turns 30", birthdayAge({ birthday: `${todayDate().getFullYear() - 30}-12-31` }) === 30);
   const d = document.createElement("div"); d.id = "selftest"; d.style.display = "none";
   d.textContent = t.join(" | ");

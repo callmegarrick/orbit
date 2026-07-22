@@ -29,6 +29,9 @@ Priorities: lower friction to act · make the daily 10-second check-in stick · 
 
 - [x] **Talking points + device-safe templates** (2026-07-22): per-person "bring up next time" topics — jot from the message picker (inline add + remove chips) or the person editor; they resurface in the picker and on the Today focus card every time until ticked off. Also replaced em-dashes with plain punctuation in all WhatsApp-bound templates (older-Android compatibility; the reported � was a paste artifact — source emoji verified valid UTF-8). SW v8. Selftest 28 assertions.
 
+## Anti-overwhelm rebuild (started 2026-07-22 — "one engine: intentions"; law: never show the wall)
+- [x] Iteration 1 (2026-07-22): **Smart capture** — the My day box now parses natural input: "call Amma tomorrow" → linked to Amma, dated tomorrow; "gym on friday" / "shoes on the 25th" → future-dated and HIDDEN until that day (a "N scheduled later" counter is the only trace). Completing a person-linked intention logs a touch (and un-completing removes it). Toast confirms what was understood. Selftest 34 assertions. SW v9.
+
 ## Boundary-pushing loop (started 2026-07-11)
 See [IDEAS.md](IDEAS.md) — brainstorm ledger with verdicts. Iteration 1 shipped `orbit-notify.ps1` + `setup-morning-toast.bat`: native Windows toasts with real names, browser fully closed.
 
