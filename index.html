@@ -274,6 +274,20 @@ section.block { margin-bottom: 28px; }
 .cal-legend { display: flex; gap: 16px; flex-wrap: wrap; margin: 12px 2px 0; font-size: 12.5px; color: var(--ink-2); }
 .cal-legend span { display: inline-flex; align-items: center; gap: 6px; }
 .cal-legend i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.week-list { display: flex; flex-direction: column; gap: 8px; }
+.week-day { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 10px 14px; }
+.week-day.today { border-color: var(--ink); border-width: 1.5px; }
+.week-day-head { display: flex; align-items: baseline; gap: 8px; }
+.week-day-head .wd-name { font-weight: 600; font-size: 13px; text-transform: capitalize; }
+.week-day.today .wd-name { color: var(--accent); }
+.week-day-head .wd-num { font-size: 12.5px; color: var(--muted); }
+.week-day-head .wd-add { margin-left: auto; padding: 2px 9px; }
+.week-items { display: flex; flex-direction: column; gap: 5px; margin-top: 8px; }
+.week-item { display: flex; align-items: center; gap: 9px; cursor: pointer; padding: 3px 4px; border-radius: 7px; }
+.week-item:hover { background: color-mix(in srgb, var(--ink) 3%, var(--surface)); }
+.wi-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.wi-label { font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.week-empty { color: var(--muted); font-size: 13px; margin-top: 6px; padding-left: 4px; }
 .day-panel { margin-top: 16px; }
 .day-panel h3 { font-size: 15px; margin: 0 0 4px; padding: 14px 18px 0; }
 .day-panel .empty-day { padding: 10px 18px 16px; color: var(--muted); font-size: 14px; }
@@ -804,6 +818,8 @@ let rightNowSnapshot = [];
 let focusQueue = null, focusIdx = 0;
 let calCursor = null; // {y, m}
 let calSelected = null;
+let calMode = "week"; // "week" | "month"
+let weekOffset = 0;
 
 function render() {
   $("#headerDate").textContent = todayDate().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
@@ -1147,6 +1163,11 @@ function calendarItems(y, m) { // m: 0-11 → map isoDate -> items[]
       push(pl.date, { kind: "plan", label: `📌 ${pl.title}${person ? ` — with ${person.name}` : ""}`, id: pl.id, act: "edit-plan" });
     }
   }
+  for (const td of S.todos.filter(td => !td.done)) {
+    const d = td.date ?? todayISO();
+    const pd = fromISO(d);
+    if (pd >= monthStart && pd <= monthEnd) push(d, { kind: "todo", label: `☑️ ${td.text}`, id: td.id, act: "todo-toggle" });
+  }
   for (const o of S.occasions.filter(o => o.enabled)) {
     let ds = [];
     if (o.fixed) { const [fm, fd] = o.fixed.split("-").map(Number); if (fm === m + 1) ds = [iso(new Date(y, m, fd))]; }
@@ -1156,8 +1177,81 @@ function calendarItems(y, m) { // m: 0-11 → map isoDate -> items[]
   }
   return map;
 }
-const KIND_COLOR = { due: "var(--accent)", bday: "var(--violet)", occ: "var(--orange)", task: "var(--aqua)", plan: "var(--magenta)" };
+function weekDays(offset) {
+  const base = todayDate();
+  base.setDate(base.getDate() + offset * 7);
+  const monday = new Date(base);
+  monday.setDate(base.getDate() - ((base.getDay() + 6) % 7));
+  return Array.from({ length: 7 }, (_, i) => { const d = new Date(monday); d.setDate(monday.getDate() + i); return iso(d); });
+}
+function weekItems(days) {
+  const map = {}; const set = new Set(days);
+  days.forEach(d => (map[d] = []));
+  const push = (d, item) => { if (set.has(d)) map[d].push(item); };
+  for (const p of S.people) {
+    const st = personState(p);
+    if (!st.snoozed) push(st.status === "late" ? todayISO() : st.due, { kind: "due", label: `${p.name.split(" ")[0]} — ${st.status === "late" ? `${st.overdueDays}d overdue` : "catch up"}`, id: p.id, act: "edit-person" });
+    if (p.birthday) { const md = p.birthday.slice(-5); const age = birthdayAge(p); for (const d of days) if (d.slice(5) === md) push(d, { kind: "bday", label: `🎂 ${p.name.split(" ")[0]}${age ? ` turns ${age}` : ""}`, id: p.id, act: "edit-person" }); }
+  }
+  for (const t of S.tasks) { const st = taskState(t); push(st.dd < 0 ? todayISO() : st.due, { kind: "task", label: `${t.emoji || "🔁"} ${t.name}`, id: t.id, act: "edit-task" }); }
+  for (const pl of S.plans.filter(pl => !pl.done)) { const person = pl.personId ? S.people.find(p => p.id === pl.personId) : null; push(pl.date, { kind: "plan", label: `📌 ${pl.title}${person ? ` · ${person.name.split(" ")[0]}` : ""}`, id: pl.id, act: "edit-plan" }); }
+  for (const td of S.todos.filter(td => !td.done)) push(td.date ?? todayISO(), { kind: "todo", label: td.text, id: td.id, act: "todo-toggle" });
+  for (const o of S.occasions.filter(o => o.enabled)) for (const d of days) {
+    const match = o.fixed ? d.slice(5) === o.fixed : o.once ? o.once === d : Object.values(o.dates ?? {}).includes(d);
+    if (match) push(d, { kind: "occ", label: `${o.emoji} ${o.name}`, id: o.id, act: "open-queue" });
+  }
+  return map;
+}
+const KIND_COLOR = { due: "var(--accent)", bday: "var(--violet)", occ: "var(--orange)", task: "var(--aqua)", plan: "var(--magenta)", todo: "var(--good)" };
+function calModeToggle() {
+  return `<div class="seg" style="margin-bottom:14px">
+    <button data-act="cal-mode" data-mode="week" class="${calMode === "week" ? "on" : ""}">Week</button>
+    <button data-act="cal-mode" data-mode="month" class="${calMode === "month" ? "on" : ""}">Month</button>
+  </div>`;
+}
+function renderWeek() {
+  const days = weekDays(weekOffset);
+  const items = weekItems(days);
+  const rangeLabel = weekOffset === 0 ? "This week" : weekOffset === 1 ? "Next week" : weekOffset === -1 ? "Last week"
+    : `${fromISO(days[0]).getDate()} ${MONTHS[fromISO(days[0]).getMonth()].slice(0,3)} – ${fromISO(days[6]).getDate()} ${MONTHS[fromISO(days[6]).getMonth()].slice(0,3)}`;
+  let body = days.map(d => {
+    const dt = fromISO(d);
+    const its = items[d];
+    const isToday = d === todayISO();
+    return `<div class="week-day${isToday ? " today" : ""}">
+      <div class="week-day-head">
+        <span class="wd-name">${dt.toLocaleDateString("en-GB", { weekday: "short" })}${isToday ? " · today" : ""}</span>
+        <span class="wd-num">${dt.getDate()} ${MONTHS[dt.getMonth()].slice(0, 3)}</span>
+        <button class="btn ghost sm wd-add" data-act="week-add" data-date="${d}" title="Add to this day">+</button>
+      </div>
+      ${its.length
+        ? `<div class="week-items">` + its.map(it => `<div class="week-item" data-act="${it.act}" data-id="${it.id}">
+            <span class="wi-dot" style="background:${KIND_COLOR[it.kind]}"></span>
+            <span class="wi-label ${it.kind === "todo" ? "" : ""}">${esc(it.label)}</span>
+          </div>`).join("") + `</div>`
+        : `<div class="week-empty">—</div>`}
+    </div>`;
+  }).join("");
+  return `<div class="cal-head">
+      <h2 class="serif">${rangeLabel}</h2>
+      <div class="cal-nav">
+        <button class="btn sm" data-act="week-nav" data-dir="-1">←</button>
+        <button class="btn sm" data-act="week-today">This week</button>
+        <button class="btn sm" data-act="week-nav" data-dir="1">→</button>
+      </div></div>
+    ${calModeToggle()}
+    <div class="week-list">${body}</div>
+    <div class="cal-legend">
+      <span><i style="background:var(--accent)"></i>Catch-up</span>
+      <span><i style="background:var(--good)"></i>To-do</span>
+      <span><i style="background:var(--magenta)"></i>Plan</span>
+      <span><i style="background:var(--violet)"></i>Birthday</span>
+      <span><i style="background:var(--orange)"></i>Occasion</span>
+      <span><i style="background:var(--aqua)"></i>Routine</span>
+    </div>`;
+}
 function renderCalendar() {
+  if (calMode === "week") return renderWeek();
   if (!calCursor) { const t = todayDate(); calCursor = { y: t.getFullYear(), m: t.getMonth() }; }
   const { y, m } = calCursor;
   const items = calendarItems(y, m);
@@ -1192,6 +1286,7 @@ function renderCalendar() {
         <button class="btn sm" data-act="cal-today">Today</button>
         <button class="btn sm" data-act="cal-nav" data-dir="1">→</button>
       </div></div>
+    ${calModeToggle()}
     <div class="cal-grid">${cells}</div>
     <div class="cal-legend">
       <span><i style="background:var(--accent)"></i>Catch-up due</span>
@@ -2040,6 +2135,10 @@ document.addEventListener("click", e => {
     }
     case "cal-today": { const t = todayDate(); calCursor = { y: t.getFullYear(), m: t.getMonth() }; calSelected = todayISO(); render(); break; }
     case "cal-day": calSelected = el.dataset.date; render(); break;
+    case "cal-mode": calMode = el.dataset.mode; render(); break;
+    case "week-nav": weekOffset += Number(el.dataset.dir); render(); break;
+    case "week-today": weekOffset = 0; render(); break;
+    case "week-add": planModal(null, el.dataset.date); break;
     case "load-sample": {
       const s = SAMPLE();
       S.people.push(...s.people); S.tasks.push(...s.tasks); S.plans.push(...s.plans); S.todos.push(...s.todos);
@@ -2473,6 +2572,11 @@ if (_q.has("selftest")) setTimeout(() => {
   ok("capture links person", !ammaP || parseCapture("call Amma tomorrow").personId === ammaP.id);
   ok("future todos hidden", visibleTodos([{ id: "f", text: "x", date: addDays(todayISO(), 3), done: false }], todayISO()).length === 0);
   ok("scheduled count", scheduledTodos([{ id: "f", text: "x", date: addDays(todayISO(), 3), done: false }], todayISO()).length === 1);
+  const wdays = weekDays(0);
+  ok("weekDays has 7 monday-start", wdays.length === 7 && fromISO(wdays[0]).getDay() === 1);
+  ok("weekDays includes today", wdays.includes(todayISO()));
+  const wmap = weekItems(wdays);
+  ok("weekItems keys are the 7 days", Object.keys(wmap).length === 7 && wdays.every(d => Array.isArray(wmap[d])));
   ok("age turns 30", birthdayAge({ birthday: `${todayDate().getFullYear() - 30}-12-31` }) === 30);
   const d = document.createElement("div"); d.id = "selftest"; d.style.display = "none";
   d.textContent = t.join(" | ");

@@ -38,6 +38,8 @@ Priorities: lower friction to act · make the daily 10-second check-in stick · 
 
 - [x] Iteration 4 (2026-07-23): **Pick from contacts** — Android Contact Picker API (`navigator.contacts.select`). "📇 Pick from your contacts" button in the add-person form (single) and "📇 From contacts" in Quick add (bulk, fills the paste box). Feature-detected via `hasContactPicker`; buttons hidden entirely on desktop/iOS where the API doesn't exist (verified: absent from rendered DOM on desktop, no error). Cuts the biggest setup friction on phone. SW v12.
 
+- [x] **Week view / scheduler** (2026-07-23, Garrick's request "see my whole week laid out"): Calendar tab now defaults to a vertical 7-day agenda (Mon-start), each day listing its to-dos, plans, catch-ups due, birthdays, occasions, routines; today highlighted; per-day "+" adds a plan on that day; ←/→ week nav + "This week". Week/Month toggle keeps the month grid one tap away. Todos now also appear in the month grid (green). SW v13. Selftest 37 assertions. This is the planning surface distinct from the capped daily "do" screen — opt-in, so it doesn't reintroduce the wall.
+
 ## Boundary-pushing loop (started 2026-07-11)
 See [IDEAS.md](IDEAS.md) — brainstorm ledger with verdicts. Iteration 1 shipped `orbit-notify.ps1` + `setup-morning-toast.bat`: native Windows toasts with real names, browser fully closed.
 
