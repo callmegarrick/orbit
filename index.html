@@ -640,6 +640,30 @@ function pickStarters(tone, n) {
   return pool.slice(0, n);
 }
 const hasWA = p => !!(p.phone ?? "").replace(/\D/g, "");
+
+/* ---------- Contact Picker API (Android Chrome/Edge; hidden elsewhere) ---------- */
+const hasContactPicker = "contacts" in navigator && "select" in (navigator.contacts ?? {});
+async function pickContact() {
+  try {
+    const sel = await navigator.contacts.select(["name", "tel"], { multiple: false });
+    if (!sel?.length) return;
+    const c = sel[0];
+    const nameInp = $("#personForm input[name=name]");
+    const phoneInp = $("#personForm input[name=phone]");
+    if (nameInp && c.name?.length) nameInp.value = c.name[0];
+    if (phoneInp && c.tel?.length) phoneInp.value = c.tel[0];
+  } catch (e) { /* picker cancelled */ }
+}
+async function pickContactsBulk() {
+  try {
+    const sel = await navigator.contacts.select(["name", "tel"], { multiple: true });
+    if (!sel?.length) return;
+    const ta = $("#bulkForm textarea");
+    if (!ta) return;
+    const lines = sel.map(c => `${c.name?.[0] ?? "?"}${c.tel?.[0] ? ", " + c.tel[0] : ""}`).join("\n");
+    ta.value = (ta.value ? ta.value + "\n" : "") + lines;
+  } catch (e) { /* picker cancelled */ }
+}
 const parseTopics = raw => String(raw ?? "").split("\n").map(s => s.trim()).filter(Boolean).slice(0, 20);
 
 /* ---------- smart capture: "call Amma tomorrow" → intention with person + date ---------- */
@@ -1276,6 +1300,7 @@ function personModal(p) {
     <h2 class="serif">${isNew ? "Add person" : esc(p.name)}</h2>
     ${recap}
     <form id="personForm" data-id="${p.id ?? ""}">
+      ${isNew && hasContactPicker ? `<button type="button" class="btn sm" data-act="pick-contact" style="margin-bottom:12px">📇 Pick from your contacts</button>` : ""}
       <div class="field"><label>Name</label><input name="name" required value="${esc(p.name)}" placeholder="Amma"></div>
       <div class="field"><label>WhatsApp number</label><input name="phone" value="${esc(p.phone ?? "")}" placeholder="+91 98765 43210" inputmode="tel">
         <div class="hint">With country code — used for one-tap WhatsApp messages.</div></div>
@@ -1380,6 +1405,7 @@ Thatha, +91 98222 33444, every 2 weeks
 Rohan, +91 91234 56789, monthly, 15/07
 Priya, quarterly"></textarea></div>
       <div class="modal-actions">
+        ${hasContactPicker ? `<button type="button" class="btn left" data-act="pick-contacts-bulk">📇 From contacts</button>` : ""}
         <button type="button" class="btn left" data-act="csv-import">⬆ Google Contacts CSV</button>
         <button type="button" class="btn" data-act="close">Cancel</button>
         <button type="submit" class="btn primary">Add everyone</button>
@@ -2032,6 +2058,8 @@ document.addEventListener("click", e => {
     case "import": doImport(); break;
     case "setup-backup": setupAutoBackup(); break;
     case "csv-import": csvImport(); break;
+    case "pick-contact": pickContact(); break;
+    case "pick-contacts-bulk": pickContactsBulk(); break;
     case "reenable-backup": reenableBackup(); break;
     case "disable-backup": {
       backupHandle = null; backupBlocked = false;
