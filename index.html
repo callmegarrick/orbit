@@ -287,7 +287,8 @@ section.block { margin-bottom: 28px; }
 .week-item:hover { background: color-mix(in srgb, var(--ink) 3%, var(--surface)); }
 .wi-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .wi-label { font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.week-empty { color: var(--muted); font-size: 13px; margin-top: 6px; padding-left: 4px; }
+.week-empty { color: var(--muted); font-size: 13px; margin-top: 6px; padding: 4px; cursor: pointer; border-radius: 7px; display: inline-block; }
+.week-empty:hover { color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--surface)); }
 .day-panel { margin-top: 16px; }
 .day-panel h3 { font-size: 15px; margin: 0 0 4px; padding: 14px 18px 0; }
 .day-panel .empty-day { padding: 10px 18px 16px; color: var(--muted); font-size: 14px; }
@@ -1229,7 +1230,7 @@ function renderWeek() {
             <span class="wi-dot" style="background:${KIND_COLOR[it.kind]}"></span>
             <span class="wi-label ${it.kind === "todo" ? "" : ""}">${esc(it.label)}</span>
           </div>`).join("") + `</div>`
-        : `<div class="week-empty">—</div>`}
+        : `<div class="week-empty" data-act="day-add" data-date="${d}">+ add something</div>`}
     </div>`;
   }).join("");
   return `<div class="cal-head">
@@ -1277,7 +1278,7 @@ function renderCalendar() {
           <span style="width:10px;height:10px;border-radius:50%;background:${KIND_COLOR[it.kind]};flex-shrink:0"></span>
           <div class="info"><div class="sub" style="color:var(--ink);font-size:14px">${esc(it.label)}</div></div></div>`).join("") + `</div>`
         : `<div class="empty-day">Nothing on this day.</div>`)
-      + `<div style="padding:0 18px 14px"><button class="btn sm" data-act="add-plan" data-date="${calSelected}">📌 + Plan on this day</button></div></div>`;
+      + `<div style="padding:0 18px 14px"><button class="btn sm" data-act="day-add" data-date="${calSelected}">+ Add to this day</button></div></div>`;
   }
   return `<div class="cal-head">
       <h2 class="serif">${MONTHS[m]} ${y}</h2>
@@ -1629,6 +1630,19 @@ function planModal(pl, presetDate) {
         ${!isNew ? `<button type="button" class="btn" data-act="plan-gcal" data-id="${pl.id}">📅 Google Calendar</button>` : ""}
         <button type="button" class="btn" data-act="close">Cancel</button>
         <button type="submit" class="btn primary">${isNew ? "Add plan" : "Save"}</button>
+      </div>
+    </form>`);
+}
+function dayAddModal(dateISO) {
+  openModal(`
+    <h2 class="serif">Add to ${fmtNice(dateISO)}</h2>
+    <p style="font-size:13.5px;color:var(--ink-2);margin:-6px 0 14px">A quick to-do lands right on this day. For something with a friend, make it a plan.</p>
+    <form id="dayAddForm" data-date="${dateISO}">
+      <div class="field"><input name="text" required placeholder="call Amma · buy shoes · dentist…" autocomplete="off" maxlength="200"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn left" data-act="day-add-plan" data-date="${dateISO}">📌 Make it a plan</button>
+        <button type="button" class="btn" data-act="close">Cancel</button>
+        <button type="submit" class="btn primary">Add</button>
       </div>
     </form>`);
 }
@@ -2143,7 +2157,8 @@ document.addEventListener("click", e => {
     case "cal-mode": calMode = el.dataset.mode; render(); break;
     case "week-nav": weekOffset += Number(el.dataset.dir); render(); break;
     case "week-today": weekOffset = 0; render(); break;
-    case "week-add": planModal(null, el.dataset.date); break;
+    case "week-add": case "day-add": dayAddModal(el.dataset.date); break;
+    case "day-add-plan": closeModal(); planModal(null, el.dataset.date); break;
     case "load-sample": {
       const s = SAMPLE();
       S.people.push(...s.people); S.tasks.push(...s.tasks); S.plans.push(...s.plans); S.todos.push(...s.todos);
@@ -2253,6 +2268,13 @@ document.addEventListener("submit", e => {
     openWA(p, text);
     closeModal();
     offerLog(p);
+  } else if (f.id === "dayAddForm") {
+    const raw = (fd.get("text") ?? "").trim();
+    if (!raw) return;
+    const cap = parseCapture(raw);
+    S.todos.push({ id: uid(), text: cap.text || raw, date: f.dataset.date, personId: cap.personId, createdAt: new Date().toISOString(), done: false });
+    save(); closeModal(); render();
+    toast(`Added to ${fmtNice(f.dataset.date).toLowerCase()} ✓`);
   } else if (f.id === "todoAddForm") {
     const raw = (fd.get("text") ?? "").trim();
     if (!raw) return;
@@ -2511,7 +2533,7 @@ async function registerPeriodicSync() {
     }
   } catch (e) { /* best-effort — needs installed PWA + engagement */ }
 }
-const APP_VERSION = "v14";
+const APP_VERSION = "v15";
 if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
   navigator.serviceWorker.register("sw.js").then(() => {
     if (Notification.permission === "granted") registerPeriodicSync();
