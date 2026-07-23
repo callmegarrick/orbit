@@ -1,5 +1,5 @@
 /* Orbit service worker — offline shell + best-effort daily background check */
-const VERSION = "orbit-v13";
+const VERSION = "orbit-v14";
 const SHELL = ["./", "./index.html", "./manifest.json", "./icon.svg", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", e => {
@@ -27,7 +27,18 @@ self.addEventListener("fetch", e => {
     return;
   }
   if (url.origin !== location.origin) return;
-  // App shell: cache-first with background refresh — works even when the local server is off
+  const isHTML = e.request.mode === "navigate" || url.pathname.endsWith("/") || url.pathname.endsWith(".html") || url.pathname.endsWith(".js") || url.pathname.endsWith(".json");
+  if (isHTML) {
+    // Network-first: online always gets the newest app; offline falls back to cache.
+    e.respondWith(
+      fetch(e.request).then(r => {
+        if (r.ok) caches.open(VERSION).then(c => c.put(e.request, r.clone()));
+        return r;
+      }).catch(() => caches.open(VERSION).then(c => c.match(e.request, { ignoreSearch: true }).then(hit => hit || c.match("./index.html"))))
+    );
+    return;
+  }
+  // Static assets (icons): cache-first with background refresh.
   e.respondWith(
     caches.open(VERSION).then(async c => {
       const hit = await c.match(e.request, { ignoreSearch: true });

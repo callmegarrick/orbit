@@ -1370,6 +1370,11 @@ function renderSettings() {
     <button class="btn" data-act="csv-import">⬆ Import Google Contacts CSV</button>
     ${S.people.some(p => p.sample) ? `<button class="btn" data-act="clear-sample">Remove example data</button>` : `<button class="btn" data-act="load-sample">Load example data</button>`}
     <button class="btn danger" data-act="wipe">Delete everything</button>
+  </div>
+  <div class="settings-block card">
+    <h3>Version</h3>
+    <p>You're on Orbit <b>${APP_VERSION}</b>. Updates now apply automatically — but if something looks stale, this forces the newest version.</p>
+    <button class="btn" data-act="force-update">↻ Force update</button>
   </div>`;
 }
 
@@ -2157,6 +2162,7 @@ document.addEventListener("click", e => {
     case "import": doImport(); break;
     case "setup-backup": setupAutoBackup(); break;
     case "csv-import": csvImport(); break;
+    case "force-update": forceUpdate(); break;
     case "pick-contact": pickContact(); break;
     case "pick-contacts-bulk": pickContactsBulk(); break;
     case "reenable-backup": reenableBackup(); break;
@@ -2505,11 +2511,26 @@ async function registerPeriodicSync() {
     }
   } catch (e) { /* best-effort — needs installed PWA + engagement */ }
 }
+const APP_VERSION = "v14";
 if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
   navigator.serviceWorker.register("sw.js").then(() => {
     if (Notification.permission === "granted") registerPeriodicSync();
   }).catch(e => console.warn("SW registration failed", e));
   navigator.storage?.persist?.().catch(() => {});
+  // Auto-reload once when a newer version takes over — updates apply themselves from now on.
+  let __reloading = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (__reloading) return; __reloading = true; location.reload();
+  });
+}
+async function forceUpdate() {
+  try {
+    const keys = await caches.keys();
+    await Promise.all(keys.filter(k => k.startsWith("orbit-v")).map(k => caches.delete(k)));
+    const regs = await navigator.serviceWorker?.getRegistrations?.() ?? [];
+    await Promise.all(regs.map(r => r.update()));
+  } catch (e) { /* fall through to reload */ }
+  location.reload();
 }
 
 /* ---------- boot ---------- */
