@@ -75,7 +75,11 @@ header.top {
   padding: 26px 0 4px; gap: 12px; flex-wrap: wrap;
 }
 .brand { display: flex; align-items: center; gap: 10px; }
-.brand svg { width: 30px; height: 30px; flex-shrink: 0; align-self: center; }
+.brand { cursor: pointer; user-select: none; }
+.brand svg { width: 30px; height: 30px; flex-shrink: 0; align-self: center; transition: transform 0.1s; }
+.brand.spun svg { animation: brandspin 0.9s cubic-bezier(0.34, 1.56, 0.64, 1); }
+@keyframes brandspin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .brand.spun svg { animation: none; } }
 .brand h1 { font-size: 26px; letter-spacing: 0.2px; }
 .today-date { color: var(--muted); font-size: 14px; }
 
@@ -405,7 +409,7 @@ section.block { margin-bottom: 28px; }
 <body>
 <div class="shell">
   <header class="top">
-    <div class="brand">
+    <div class="brand" data-act="logo-spin" title="">
       <svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="24" fill="none" stroke="var(--accent)" stroke-width="5" stroke-linecap="round" stroke-dasharray="113 38" transform="rotate(-90 32 32)"/><circle cx="32" cy="8" r="7" fill="var(--serious)"/><circle cx="32" cy="32" r="9" fill="var(--ink)"/></svg>
       <h1 class="serif">Orbit</h1>
     </div>
@@ -817,6 +821,7 @@ let activeTab = "today";
 let showAll = false;
 let rightNowSnapshot = [];
 let focusQueue = null, focusIdx = 0;
+let logoTaps = 0;
 let calCursor = null; // {y, m}
 let calSelected = null;
 let calMode = "week"; // "week" | "month"
@@ -996,7 +1001,7 @@ function renderToday() {
   html += `<section class="block"><div class="block-head"><h2>Right now</h2><span>${heldBack > 0 ? `<span style="font-size:12.5px;color:var(--muted)">${heldBack} more waiting quietly · </span>` : ""}${rightNowSnapshot.length ? `<button class="more" data-act="focus-start">▶ Focus</button>` : ""}</span></div>`;
   if (focus.length) html += `<div class="focus-grid" style="margin-bottom:14px">${focus.map(personCard).join("")}</div>`;
   if (nowItems.length) html += `<div class="rows card" style="padding:0 18px">${nowItems.map(x => x.html).join("")}</div>`;
-  if (!focus.length && !nowItems.length) html += `<div class="card" style="padding:26px 24px;text-align:center"><div style="font-size:26px;margin-bottom:6px">✨</div><div style="font-weight:600">Clear.</div><div style="color:var(--ink-2);font-size:14px">Nothing needs you right now — go live your life. Orbit's watching the calendar.</div></div>`;
+  if (!focus.length && !nowItems.length) html += `<div class="card" style="padding:26px 24px;text-align:center"><div style="font-size:26px;margin-bottom:6px">✨</div><div style="font-weight:600">Clear.</div><div style="color:var(--ink-2);font-size:14px">${esc(pick(CLEAR_LINES))} Orbit's watching the calendar.</div></div>`;
   html += `<div class="card" style="margin-top:14px;padding:2px 18px 8px"><form id="todoAddForm" class="todo-add"><input name="text" placeholder="+ Add anything — 'call Amma tomorrow', 'shoes on friday'…" autocomplete="off" maxlength="200"></form></div>
   </section>`;
 
@@ -1787,11 +1792,12 @@ function focusItemData(item) {
 function focusModal() {
   while (focusIdx < focusQueue.length && !focusItemData(focusQueue[focusIdx])) focusIdx++;
   if (focusIdx >= focusQueue.length) {
+    if (focusQueue.length) setTimeout(() => celebrate({ big: true }), 60);
     openModal(`
       <div style="text-align:center;padding:12px 0">
         <div style="font-size:40px;margin-bottom:8px">✨</div>
         <h2 class="serif" style="margin-bottom:6px">Clear.</h2>
-        <p style="color:var(--ink-2)">That's everything that needed you. Go live your life.</p>
+        <p style="color:var(--ink-2)">${esc(pick(CLEAR_LINES))}</p>
         <div class="modal-actions" style="justify-content:center"><button class="btn primary" data-act="focus-end">Done</button></div>
       </div>`);
     return;
@@ -1815,6 +1821,71 @@ function focusModal() {
 }
 function focusAdvance() { focusIdx++; focusModal(); }
 
+/* ---------- delight: confetti + celebration ---------- */
+const reducedMotion = () => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+const CELEBRATE_COLORS = ["#2a78d6", "#1baf7a", "#eda100", "#e34948", "#e87ba4", "#eb6834", "#4a3aa7"];
+function celebrate(opts = {}) {
+  if (reducedMotion()) return;
+  const n = opts.big ? 100 : 46;
+  const cx = opts.x ?? window.innerWidth / 2;
+  const cy = opts.y ?? window.innerHeight / 3;
+  const cv = document.createElement("canvas");
+  cv.style.cssText = "position:fixed;inset:0;pointer-events:none;z-index:200";
+  cv.width = window.innerWidth; cv.height = window.innerHeight;
+  document.body.appendChild(cv);
+  const ctx = cv.getContext("2d");
+  const spread = opts.big ? 15 : 11;
+  const parts = Array.from({ length: n }, () => ({
+    x: cx, y: cy,
+    vx: (Math.random() - 0.5) * spread,
+    vy: (Math.random() - 1.1) * spread,
+    g: 0.3 + Math.random() * 0.16,
+    size: 5 + Math.random() * 5,
+    color: CELEBRATE_COLORS[(Math.random() * CELEBRATE_COLORS.length) | 0],
+    rot: Math.random() * 6.28, vr: (Math.random() - 0.5) * 0.3, life: 1,
+  }));
+  let frame = 0;
+  (function tick() {
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    let alive = false;
+    for (const p of parts) {
+      p.vy += p.g; p.x += p.vx; p.y += p.vy; p.rot += p.vr; p.life -= 0.011;
+      if (p.life > 0 && p.y < cv.height + 30) {
+        alive = true;
+        ctx.save(); ctx.globalAlpha = Math.max(0, p.life); ctx.translate(p.x, p.y); ctx.rotate(p.rot);
+        ctx.fillStyle = p.color; ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.62); ctx.restore();
+      }
+    }
+    if (alive && ++frame < 170) requestAnimationFrame(tick); else cv.remove();
+  })();
+}
+const elCenter = el => { const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; };
+const pick = arr => arr[(Math.random() * arr.length) | 0];
+const TOUCH_CHEERS = ["Nice — {n} will feel that 💛", "One more orbit kept ✨", "That's how bonds stay alive 🌿", "Look at you, showing up 👏", "{n}'s day just got a little brighter ☀️", "Small hello, big deal 🌟", "You're the friend people are lucky to have 🤍"];
+const CLEAR_LINES = ["Nothing needs you right now — go live your life.", "All clear. The people who matter are in orbit.", "Done. Go be present somewhere real.", "Empty list, full heart. Off you go.", "Caught up. That's what being good at this looks like.", "Clear skies. The garden's watered."];
+/* Milestones reward the OUTCOME — real connection — and each fires only once. */
+function checkMilestones(p) {
+  S.settings.milestones = S.settings.milestones ?? {};
+  const fired = S.settings.milestones;
+  const first = p.name.split(" ")[0];
+  const dates = (p.interactions ?? []).map(i => i.date).sort();
+  const touches = dates.length;
+  // reconnected after a long silence
+  if (touches >= 2) {
+    const gap = Math.round((fromISO(dates[touches - 1]) - fromISO(dates[touches - 2])) / DAY);
+    const k = `reconnect:${p.id}:${dates[touches - 1]}`;
+    if (gap >= Math.max(45, p.cadence * 3) && !fired[k]) { fired[k] = todayISO(); return `💫 You reconnected with ${first} after ${Math.round(gap / 30)} months apart — that took heart`; }
+  }
+  // first ever touch
+  if (touches === 1 && !fired[`first:${p.id}`]) { fired[`first:${p.id}`] = todayISO(); return `🌟 ${first} is officially in your orbit`; }
+  // catch-up count milestones
+  for (const m of [10, 25, 50, 100]) {
+    const k = `count:${p.id}:${m}`;
+    if (touches === m && !fired[k]) { fired[k] = todayISO(); return `🌿 ${m} catch-ups with ${first} — that's a real bond`; }
+  }
+  return null;
+}
+
 /* ---------- toast ---------- */
 let toastTimer = null, undoFn = null;
 function toast(msg, undo) {
@@ -1834,10 +1905,19 @@ function logTouchOn(id, dateISO, note) {
   p.interactions = p.interactions ?? [];
   p.interactions.push({ date: dateISO, ...(note ? { note } : {}) });
   p.snoozedUntil = null;
+  const isToday = dateISO === todayISO();
+  const ms = checkMilestones(p); // records the milestone so it fires only once
   save(); closeModal(); render();
   const t = $("#toast");
   undoFn = () => { p.interactions.pop(); save(); render(); };
-  t.innerHTML = `Logged ${esc(p.name)} — ${fmtNice(dateISO).toLowerCase()} ✓ <button data-act="undo">Undo</button>${note ? "" : ` <button data-act="note-last" data-id="${p.id}">📝 add note</button>`}`;
+  if (ms) {
+    celebrate({ big: true });
+    t.innerHTML = `${esc(ms)} <button data-act="undo">Undo</button>`;
+  } else {
+    if (isToday) celebrate();
+    const cheer = isToday ? esc(pick(TOUCH_CHEERS).replaceAll("{n}", p.name.split(" ")[0])) : `Logged ${esc(p.name)} — ${fmtNice(dateISO).toLowerCase()} ✓`;
+    t.innerHTML = `${cheer} <button data-act="undo">Undo</button>${note ? "" : ` <button data-act="note-last" data-id="${p.id}">📝 note</button>`}`;
+  }
   t.classList.add("show");
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.remove("show"), 6500);
@@ -1980,6 +2060,7 @@ document.addEventListener("click", e => {
       const t = S.tasks.find(x => x.id === id);
       const prev = t.lastDone;
       t.lastDone = todayISO(); save(); render();
+      celebrate(elCenter(el));
       toast(`${t.name} done ✓ — next ${fmtNice(taskState(t).due)}`, () => { t.lastDone = prev; save(); render(); });
       break;
     }
@@ -2014,6 +2095,13 @@ document.addEventListener("click", e => {
     case "open-queue": e.stopPropagation(); queueModal(id); break;
     case "open-review": reviewModal(); break;
     case "toggle-show-all": showAll = !showAll; render(); break;
+    case "logo-spin": {
+      const brand = el.closest(".brand");
+      brand.classList.remove("spun"); void brand.offsetWidth; brand.classList.add("spun");
+      logoTaps++;
+      if (logoTaps === 7) { celebrate({ big: true }); toast("You found the secret orbit 🛸 — made with care, for the people you love."); logoTaps = 0; }
+      break;
+    }
     case "focus-start": focusQueue = [...rightNowSnapshot]; focusIdx = 0; focusModal(); break;
     case "focus-end": closeModal(); render(); break;
     case "focus-skip": focusAdvance(); break;
@@ -2071,8 +2159,11 @@ document.addEventListener("click", e => {
           if (i >= 0) tp.interactions.splice(i, 1);
         }
       }
+      const msT = td.done && tp ? checkMilestones(tp) : null;
       save(); render();
-      if (td.done && tp) toast(`✓ counted as a touch with ${tp.name.split(" ")[0]}`);
+      if (td.done) celebrate(elCenter(el));
+      if (msT) toast(msT);
+      else if (td.done && tp) toast(`✓ counted as a touch with ${tp.name.split(" ")[0]}`);
       break;
     }
     case "todo-del": {
@@ -2105,8 +2196,10 @@ document.addEventListener("click", e => {
         person.interactions.push({ date: todayISO(), note: pl.title });
         person.snoozedUntil = null;
       }
+      const msP = person ? checkMilestones(person) : null;
       save(); render();
-      toast(`${pl.title} ✓${person ? ` — counted as a touch with ${person.name.split(" ")[0]}` : ""}`, () => {
+      celebrate(elCenter(el));
+      toast(msP || `${pl.title} ✓${person ? ` — counted as a touch with ${person.name.split(" ")[0]}` : ""}`, () => {
         pl.done = false; delete pl.doneAt;
         if (person) person.interactions.pop();
         save(); render();
@@ -2533,7 +2626,7 @@ async function registerPeriodicSync() {
     }
   } catch (e) { /* best-effort — needs installed PWA + engagement */ }
 }
-const APP_VERSION = "v15";
+const APP_VERSION = "v16";
 if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
   navigator.serviceWorker.register("sw.js").then(() => {
     if (Notification.permission === "granted") registerPeriodicSync();
@@ -2620,6 +2713,12 @@ if (_q.has("selftest")) setTimeout(() => {
   ok("weekDays includes today", wdays.includes(todayISO()));
   const wmap = weekItems(wdays);
   ok("weekItems keys are the 7 days", Object.keys(wmap).length === 7 && wdays.every(d => Array.isArray(wmap[d])));
+  S.settings.milestones = {};
+  ok("milestone first touch", checkMilestones({ id: "mtest", name: "Zed Q", cadence: 30, interactions: [{ date: todayISO() }] })?.includes("orbit"));
+  ok("milestone fires once", checkMilestones({ id: "mtest", name: "Zed Q", cadence: 30, interactions: [{ date: todayISO() }] }) === null);
+  ok("milestone reconnect", !!checkMilestones({ id: "mtest2", name: "Rae", cadence: 14, interactions: [{ date: addDays(todayISO(), -200) }, { date: todayISO() }] }));
+  ok("celebrate is a function", typeof celebrate === "function");
+  ok("pick returns member", TOUCH_CHEERS.includes(pick(TOUCH_CHEERS)));
   ok("age turns 30", birthdayAge({ birthday: `${todayDate().getFullYear() - 30}-12-31` }) === 30);
   const d = document.createElement("div"); d.id = "selftest"; d.style.display = "none";
   d.textContent = t.join(" | ");

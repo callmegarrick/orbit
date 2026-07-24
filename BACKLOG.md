@@ -40,6 +40,9 @@ Priorities: lower friction to act · make the daily 10-second check-in stick · 
 
 - [x] **Week view / scheduler** (2026-07-23, Garrick's request "see my whole week laid out"): Calendar tab now defaults to a vertical 7-day agenda (Mon-start), each day listing its to-dos, plans, catch-ups due, birthdays, occasions, routines; today highlighted; per-day "+" adds a plan on that day; ←/→ week nav + "This week". Week/Month toggle keeps the month grid one tap away. Todos now also appear in the month grid (green). SW v13. Selftest 37 assertions. This is the planning surface distinct from the capped daily "do" screen — opt-in, so it doesn't reintroduce the wall.
 
+## Delight (started 2026-07-24 — joy, NOT addiction; reward the outcome, never app-usage)
+- [x] Delight 1 (2026-07-24): **Completion moments + real-connection milestones + logo easter egg.** Confetti burst (self-contained canvas, respects prefers-reduced-motion) on logging a touch / completing a to-do / plan / routine / clearing focus mode. Varied warm microcopy (TOUCH_CHEERS, CLEAR_LINES — never the same line twice). Milestones fire once and celebrate the OUTCOME: first touch ("X is officially in your orbit 🌟"), reconnecting after a long silence ("reconnected after N months 💫"), catch-up counts (10/25/50/100 🌿). Tap the orbit logo to spin it; 7 taps = hidden thank-you. SW v16. Selftest 42. NO streaks/points/engagement-bait — guardrails held.
+
 ## Boundary-pushing loop (started 2026-07-11)
 See [IDEAS.md](IDEAS.md) — brainstorm ledger with verdicts. Iteration 1 shipped `orbit-notify.ps1` + `setup-morning-toast.bat`: native Windows toasts with real names, browser fully closed.
 
