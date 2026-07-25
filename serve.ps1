@@ -1,23 +1,23 @@
-# Orbit local server - serves the app at http://localhost:8123/
+# Kith local server - serves the app at http://localhost:8123/
 # Uses only built-in Windows components; no installs needed.
 param([int]$Port = 8123)
 
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $prefix = "http://localhost:$Port/"
 
-# If another Orbit server is already running, just exit quietly.
+# If another Kith server is already running, just exit quietly.
 try {
     $probe = New-Object System.Net.Sockets.TcpClient
     $probe.Connect("127.0.0.1", $Port)
     $probe.Close()
-    Write-Host "Orbit is already running at $prefix"
+    Write-Host "Kith is already running at $prefix"
     exit 0
 } catch { }
 
 $listener = New-Object System.Net.HttpListener
 $listener.Prefixes.Add($prefix)
 $listener.Start()
-Write-Host "Orbit is serving $root at $prefix (the installed app keeps working even if you close this window)"
+Write-Host "Kith is serving $root at $prefix (the installed app keeps working even if you close this window)"
 
 $mime = @{
     ".html" = "text/html; charset=utf-8"

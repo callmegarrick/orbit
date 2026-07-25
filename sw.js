@@ -1,5 +1,5 @@
-/* Orbit service worker — offline shell + best-effort daily background check */
-const VERSION = "orbit-v16";
+/* Kith service worker — offline shell + best-effort daily background check */
+const VERSION = "orbit-v17";
 const SHELL = ["./", "./index.html", "./manifest.json", "./icon.svg", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", e => {
@@ -86,7 +86,7 @@ async function dailyCheck() {
     const due = alerts.filter(a => a.date <= iso);
     if (!due.length) return;
     await idbPut("last-shown", iso);
-    await self.registration.showNotification("Orbit — time to reach out", {
+    await self.registration.showNotification("Kith — time to reach out", {
       body: due[due.length - 1].text,
       icon: "icon.svg",
       badge: "icon.svg",

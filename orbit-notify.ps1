@@ -1,4 +1,4 @@
-# Orbit morning nudge - native Windows toast, works with the browser fully closed.
+# Kith morning nudge - native Windows toast, works with the browser fully closed.
 # Reads the newest orbit-backup*.json (written by the app's auto-backup) and shows
 # who is overdue, upcoming birthdays (7 days) and occasions (3 days).
 # Run daily via setup-morning-toast.bat. ASCII-only file (PS 5.1 parses ANSI).
@@ -51,7 +51,7 @@ function Show-Toast([string]$title, [string]$line1, [string]$line2) {
 }
 
 if ($Test) {
-    Show-Toast "Orbit - time to reach out" "Amma (4d overdue), Rohan (2d overdue)" "Priya's birthday in 3 days"
+    Show-Toast "Kith - time to reach out" "Amma (4d overdue), Rohan (2d overdue)" "Priya's birthday in 3 days"
     Write-Host "TEST TOAST SHOWN"
     exit 0
 }
@@ -61,7 +61,7 @@ $file = Find-Backup
 
 if (-not $file) {
     # No backup file yet - still give the daily nudge, generically.
-    Show-Toast "Orbit - morning check-in" "Open Orbit to see who needs a hello today." "Tip: turn on auto-backup in Settings for named reminders."
+    Show-Toast "Kith - morning check-in" "Open Kith to see who needs a hello today." "Tip: turn on auto-backup in Settings for named reminders."
     Write-Host "GENERIC TOAST (no orbit-backup*.json found)"
     exit 0
 }
@@ -173,5 +173,5 @@ if ($overdue) {
 $line2 = (@($bdays + $occs) | Select-Object -First 2) -join "  |  "
 if (-not $line1) { $line1 = $line2; $line2 = "" }
 
-Show-Toast "Orbit - time to reach out" $line1 $line2
+Show-Toast "Kith - time to reach out" $line1 $line2
 Write-Host "TOAST SHOWN: $line1 | $line2 (from $($file.Name))"

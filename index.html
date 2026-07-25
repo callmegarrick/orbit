@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Orbit — stay close</title>
+<title>Kith — stay close</title>
 <meta name="description" content="A personal tracker for staying close to the people who matter.">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -411,7 +411,7 @@ section.block { margin-bottom: 28px; }
   <header class="top">
     <div class="brand" data-act="logo-spin" title="">
       <svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="24" fill="none" stroke="var(--accent)" stroke-width="5" stroke-linecap="round" stroke-dasharray="113 38" transform="rotate(-90 32 32)"/><circle cx="32" cy="8" r="7" fill="var(--serious)"/><circle cx="32" cy="32" r="9" fill="var(--ink)"/></svg>
-      <h1 class="serif">Orbit</h1>
+      <h1 class="serif">Kith</h1>
     </div>
     <div class="today-date" id="headerDate"></div>
   </header>
@@ -425,7 +425,7 @@ section.block { margin-bottom: 28px; }
 <script>
 "use strict";
 /* =====================================================
-   Orbit — relationship & recurring-life tracker
+   Kith — relationship & recurring-life tracker
    All data lives in localStorage under 'orbit-data'.
    ===================================================== */
 
@@ -621,7 +621,7 @@ function gcalLink(pl) {
   const start = pl.date.replaceAll("-", "");
   const end = addDays(pl.date, 1).replaceAll("-", "");
   const person = pl.personId ? S.people.find(p => p.id === pl.personId) : null;
-  const details = [pl.note, person ? `With ${person.name}` : "", "— from Orbit"].filter(Boolean).join("\n");
+  const details = [pl.note, person ? `With ${person.name}` : "", "— from Kith"].filter(Boolean).join("\n");
   return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(pl.title)}&dates=${start}/${end}&details=${encodeURIComponent(details)}`;
 }
 const OCC_TPL = "Happy {occasion}, {name}! 🎉 Thinking of you and hope you're doing great. Let's catch up soon!";
@@ -845,8 +845,8 @@ function render() {
 function emptyState() {
   return `<div class="empty card">
     <div class="big">🫂</div>
-    <h2 class="serif">Keep the people you love in orbit</h2>
-    <p>Add someone, set how often you want to be in touch, and Orbit will quietly tell you when it's time — birthdays and festivals included.</p>
+    <h2 class="serif">Keep the people you love close</h2>
+    <p>Add someone, set how often you want to be in touch, and Kith will quietly tell you when it's time — birthdays and festivals included.</p>
     <button class="btn primary" data-act="add-person">Add your first person</button>
     <button class="btn" data-act="bulk-add">⚡ Add many at once</button>
     <button class="btn" data-act="load-sample">Try with example data</button>
@@ -913,7 +913,7 @@ function renderToday() {
 
   let html = `<div class="hero card">
     <h2 class="serif">${greet}, Garrick</h2>
-    <p>${parts.length ? parts.join(" · ") : `<span class="all-clear">✓ All caught up — everyone's in orbit.</span>`}</p>
+    <p>${parts.length ? parts.join(" · ") : `<span class="all-clear">✓ All caught up — everyone's close.</span>`}</p>
     ${weekStrip()}
     ${(() => { const otd = onThisDay(); return otd ? `<div style="margin-top:11px;font-size:13.5px;color:var(--ink-2)">🕰 ${otd.label}, you and <b>${esc(otd.p.name.split(" ")[0])}</b> talked about “${esc(otd.note)}” — worth a follow-up?</div>` : ""; })()}
   </div>`;
@@ -1001,7 +1001,7 @@ function renderToday() {
   html += `<section class="block"><div class="block-head"><h2>Right now</h2><span>${heldBack > 0 ? `<span style="font-size:12.5px;color:var(--muted)">${heldBack} more waiting quietly · </span>` : ""}${rightNowSnapshot.length ? `<button class="more" data-act="focus-start">▶ Focus</button>` : ""}</span></div>`;
   if (focus.length) html += `<div class="focus-grid" style="margin-bottom:14px">${focus.map(personCard).join("")}</div>`;
   if (nowItems.length) html += `<div class="rows card" style="padding:0 18px">${nowItems.map(x => x.html).join("")}</div>`;
-  if (!focus.length && !nowItems.length) html += `<div class="card" style="padding:26px 24px;text-align:center"><div style="font-size:26px;margin-bottom:6px">✨</div><div style="font-weight:600">Clear.</div><div style="color:var(--ink-2);font-size:14px">${esc(pick(CLEAR_LINES))} Orbit's watching the calendar.</div></div>`;
+  if (!focus.length && !nowItems.length) html += `<div class="card" style="padding:26px 24px;text-align:center"><div style="font-size:26px;margin-bottom:6px">✨</div><div style="font-weight:600">Clear.</div><div style="color:var(--ink-2);font-size:14px">${esc(pick(CLEAR_LINES))} Kith's watching the calendar.</div></div>`;
   html += `<div class="card" style="margin-top:14px;padding:2px 18px 8px"><form id="todoAddForm" class="todo-add"><input name="text" placeholder="+ Add anything — 'call Amma tomorrow', 'shoes on friday'…" autocomplete="off" maxlength="200"></form></div>
   </section>`;
 
@@ -1089,7 +1089,7 @@ function renderPeople() {
   const late = list.filter(x => x.st.status === "late" && !x.st.snoozed).length;
 
   let html = `<div class="stat-row">
-    <div class="stat card"><div class="label">People in orbit</div><div class="value">${S.people.length}</div></div>
+    <div class="stat card"><div class="label">People you keep close</div><div class="value">${S.people.length}</div></div>
     <div class="stat card"><div class="label">Overdue</div><div class="value ${late ? "crit" : ""}">${late}</div></div>
     <div class="stat card"><div class="label">Solid relationships</div><div class="value ok">${solid}</div></div>
     <div class="stat card"><div class="label">Touches this month</div><div class="value">${touchesThisMonth()}</div></div>
@@ -1334,14 +1334,14 @@ function renderSettings() {
   return `
   <div class="settings-block card">
     <h3>Notifications</h3>
-    <p>Orbit checks for overdue people, birthdays (${S.settings.birthdayLead} days ahead) and occasions (${S.settings.occasionLead} days ahead) whenever it's open, and once a day in the background when installed as an app.</p>
+    <p>Kith checks for overdue people, birthdays (${S.settings.birthdayLead} days ahead) and occasions (${S.settings.occasionLead} days ahead) whenever it's open, and once a day in the background when installed as an app.</p>
     <p>Status: <b>${perm === "granted" ? "✓ enabled" : perm === "denied" ? "blocked in browser settings" : perm === "unsupported" ? "not supported here" : "not enabled yet"}</b></p>
     ${perm === "default" ? `<button class="btn primary" data-act="enable-notif">Enable notifications</button>` : ""}
     ${perm === "granted" ? `<button class="btn" data-act="test-notif">Send a test</button>` : ""}
   </div>
   <div class="settings-block card">
     <h3>Install as an app</h3>
-    <p>In Edge or Chrome: menu <b>⋯ → Apps → Install Orbit</b>. It gets its own window, a taskbar icon, and keeps working even when the server script isn't running. For a guaranteed daily nudge, the <b>daily-reminder-setup.bat</b> file in the Orbit folder makes Windows open the app every morning at 9:00.</p>
+    <p>In Edge or Chrome: menu <b>⋯ → Apps → Install Kith</b>. It gets its own window, a taskbar icon, and keeps working even when the server script isn't running. For a guaranteed daily nudge, the <b>daily-reminder-setup.bat</b> file in the Kith folder makes Windows open the app every morning at 9:00.</p>
   </div>
   <div class="settings-block card">
     <h3>Occasions</h3>
@@ -1360,11 +1360,11 @@ function renderSettings() {
   <div class="settings-block card">
     <h3>Backup</h3>
     ${FSA ? (backupHandle
-      ? `<p>🛡 <b>Auto-backup is on${backupBlocked ? " (paused)" : ""}</b> — Orbit rewrites your backup file after every change.${S.settings.lastAutoBackup ? ` Last saved ${new Date(S.settings.lastAutoBackup).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}.` : ""}${backupBlocked ? " Click Resume to re-allow file access." : ""}</p>
+      ? `<p>🛡 <b>Auto-backup is on${backupBlocked ? " (paused)" : ""}</b> — Kith rewrites your backup file after every change.${S.settings.lastAutoBackup ? ` Last saved ${new Date(S.settings.lastAutoBackup).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}.` : ""}${backupBlocked ? " Click Resume to re-allow file access." : ""}</p>
          ${backupBlocked ? `<button class="btn primary" data-act="reenable-backup">Resume auto-backup</button>` : ""}
          <button class="btn" data-act="setup-backup">Change file</button>
          <button class="btn ghost" data-act="disable-backup">Turn off</button>`
-      : `<p>Everything lives in this browser's storage. Turn on auto-backup and Orbit will silently save to a file you choose (put it in OneDrive or Documents) after every change — so nothing is ever lost, even if the browser's data is cleared.</p>
+      : `<p>Everything lives in this browser's storage. Turn on auto-backup and Kith will silently save to a file you choose (put it in OneDrive or Documents) after every change — so nothing is ever lost, even if the browser's data is cleared.</p>
          <button class="btn primary" data-act="setup-backup">🛡 Turn on auto-backup</button>`)
       : `<p>Everything lives in this browser's storage on this laptop.</p>`}
     <button class="btn" data-act="export">⬇ Export backup</button>
@@ -1379,7 +1379,7 @@ function renderSettings() {
   </div>
   <div class="settings-block card">
     <h3>Version</h3>
-    <p>You're on Orbit <b>${APP_VERSION}</b>. Updates now apply automatically — but if something looks stale, this forces the newest version.</p>
+    <p>You're on Kith <b>${APP_VERSION}</b>. Updates now apply automatically — but if something looks stale, this forces the newest version.</p>
     <button class="btn" data-act="force-update">↻ Force update</button>
   </div>`;
 }
@@ -1424,7 +1424,7 @@ function personModal(p) {
         <select name="tone">
           ${TONES.map(([v, l]) => `<option value="${v}" ${(p.tone || "warm") === v ? "selected" : ""}>${l}${v === "respectful" ? " — elders & family" : v === "playful" ? " — close friends" : " — friendly, default"}</option>`).join("")}
         </select>
-        <div class="hint">Sets the vibe of the starter messages Orbit suggests for ${esc(p.name ? p.name.split(" ")[0] : "them")}.</div></div>
+        <div class="hint">Sets the vibe of the starter messages Kith suggests for ${esc(p.name ? p.name.split(" ")[0] : "them")}.</div></div>
       <div class="field"><label>Their people <span style="font-weight:400;color:var(--muted)">(optional)</span></label>
         <input name="circle" value="${esc(p.circle ?? "")}" placeholder="wife Meera · kids Aarav & Ira · dog Simba">
         <div class="hint">Never fumble a partner's or kid's name again — shows here before every call.</div></div>
@@ -1604,7 +1604,7 @@ function csvPreviewModal() {
           return `<label class="queue-row" style="cursor:pointer">
             <input type="checkbox" name="pick" value="${i}" ${dupe ? "disabled" : "checked"}>
             <span class="qname">${esc(c.name)}</span>
-            <span style="font-size:12.5px;color:var(--muted);white-space:nowrap">${dupe ? "already in Orbit" : `${c.phone ? "📱" : ""}${c.birthday ? " 🎂" : ""}`}</span>
+            <span style="font-size:12.5px;color:var(--muted);white-space:nowrap">${dupe ? "already in Kith" : `${c.phone ? "📱" : ""}${c.birthday ? " 🎂" : ""}`}</span>
           </label>`;
         }).join("")}
       </div>
@@ -1861,8 +1861,8 @@ function celebrate(opts = {}) {
 }
 const elCenter = el => { const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; };
 const pick = arr => arr[(Math.random() * arr.length) | 0];
-const TOUCH_CHEERS = ["Nice — {n} will feel that 💛", "One more orbit kept ✨", "That's how bonds stay alive 🌿", "Look at you, showing up 👏", "{n}'s day just got a little brighter ☀️", "Small hello, big deal 🌟", "You're the friend people are lucky to have 🤍"];
-const CLEAR_LINES = ["Nothing needs you right now — go live your life.", "All clear. The people who matter are in orbit.", "Done. Go be present somewhere real.", "Empty list, full heart. Off you go.", "Caught up. That's what being good at this looks like.", "Clear skies. The garden's watered."];
+const TOUCH_CHEERS = ["Nice — {n} will feel that 💛", "One more kept close ✨", "That's how bonds stay alive 🌿", "Look at you, showing up 👏", "{n}'s day just got a little brighter ☀️", "Small hello, big deal 🌟", "You're the friend people are lucky to have 🤍"];
+const CLEAR_LINES = ["Nothing needs you right now — go live your life.", "All clear. The people who matter are close.", "Done. Go be present somewhere real.", "Empty list, full heart. Off you go.", "Caught up. That's what being good at this looks like.", "Clear skies. The garden's watered."];
 /* Milestones reward the OUTCOME — real connection — and each fires only once. */
 function checkMilestones(p) {
   S.settings.milestones = S.settings.milestones ?? {};
@@ -1877,7 +1877,7 @@ function checkMilestones(p) {
     if (gap >= Math.max(45, p.cadence * 3) && !fired[k]) { fired[k] = todayISO(); return `💫 You reconnected with ${first} after ${Math.round(gap / 30)} months apart — that took heart`; }
   }
   // first ever touch
-  if (touches === 1 && !fired[`first:${p.id}`]) { fired[`first:${p.id}`] = todayISO(); return `🌟 ${first} is officially in your orbit`; }
+  if (touches === 1 && !fired[`first:${p.id}`]) { fired[`first:${p.id}`] = todayISO(); return `🌟 ${first} is officially one of your people`; }
   // catch-up count milestones
   for (const m of [10, 25, 50, 100]) {
     const k = `count:${p.id}:${m}`;
@@ -2099,7 +2099,7 @@ document.addEventListener("click", e => {
       const brand = el.closest(".brand");
       brand.classList.remove("spun"); void brand.offsetWidth; brand.classList.add("spun");
       logoTaps++;
-      if (logoTaps === 7) { celebrate({ big: true }); toast("You found the secret orbit 🛸 — made with care, for the people you love."); logoTaps = 0; }
+      if (logoTaps === 7) { celebrate({ big: true }); toast("You found the secret 🛸 — made with care, for the people you love."); logoTaps = 0; }
       break;
     }
     case "focus-start": focusQueue = [...rightNowSnapshot]; focusIdx = 0; focusModal(); break;
@@ -2280,7 +2280,7 @@ document.addEventListener("click", e => {
       break;
     }
     case "wipe": {
-      if (!confirm("Delete ALL Orbit data on this device? Export a backup first if unsure.")) break;
+      if (!confirm("Delete ALL Kith data on this device? Export a backup first if unsure.")) break;
       localStorage.removeItem("orbit-data"); S = load(); render(); toast("All data deleted");
       break;
     }
@@ -2291,7 +2291,7 @@ document.addEventListener("click", e => {
       });
       break;
     }
-    case "test-notif": showNotification("Orbit is watching the calendar 👋", "You'll hear from me when someone needs a hello."); break;
+    case "test-notif": showNotification("Kith is watching the calendar 👋", "You'll hear from me when someone needs a hello."); break;
     case "undo": if (undoFn) { undoFn(); undoFn = null; } $("#toast").classList.remove("show"); break;
     case "close": closeModal(); break;
     case "close-overlay": if (e.target === el) closeModal(); break;
@@ -2339,7 +2339,7 @@ document.addEventListener("submit", e => {
     if (id) Object.assign(S.people.find(p => p.id === id), data);
     else S.people.push({ id: uid(), createdAt: todayISO(), interactions: [], topics: [], ...data });
     save(); closeModal(); render();
-    if (!id) toast(`${data.name} added to your orbit ✓`);
+    if (!id) toast(`${data.name} is now one of your people ✓`);
   } else if (f.id === "taskForm") {
     const id = f.dataset.id;
     const data = {
@@ -2414,7 +2414,7 @@ document.addEventListener("submit", e => {
       S.people.push({ id: uid(), name: c.name, phone: c.phone, birthday: c.birthday, cadence, notes: "", createdAt: todayISO(), interactions: [] });
     }
     save(); closeModal(); render();
-    toast(`${picks.length} ${picks.length === 1 ? "person" : "people"} imported into your orbit ✓`);
+    toast(`${picks.length} ${picks.length === 1 ? "person" : "people"} added ✓`);
   } else if (f.id === "bulkForm") {
     const { people, skipped } = parseBulk(fd.get("bulk") ?? "");
     if (!people.length) { alert("Couldn't find any names — start each line with a person's name."); return; }
@@ -2450,11 +2450,11 @@ function doImport() {
     try {
       const obj = JSON.parse(await inp.files[0].text());
       const data = obj.data ?? obj;
-      if (!Array.isArray(data.people)) throw new Error("not an Orbit backup");
+      if (!Array.isArray(data.people)) throw new Error("not an Kith backup");
       if (!confirm(`Import ${data.people.length} people and replace what's here now?`)) return;
       S = Object.assign(structuredClone(DEFAULTS), data);
       save(); render(); toast("Backup restored ✓");
-    } catch (err) { alert("That file doesn't look like an Orbit backup. " + err.message); }
+    } catch (err) { alert("That file doesn't look like an Kith backup. " + err.message); }
   };
   inp.click();
 }
@@ -2487,7 +2487,7 @@ function notifyDigest(force) {
   if (!force && S.settings.lastNotified?.digest === key) return;
   S.settings.lastNotified = { ...(S.settings.lastNotified ?? {}), digest: key };
   save();
-  showNotification("Orbit — time to reach out", text);
+  showNotification("Kith — time to reach out", text);
 }
 function updateBadge() {
   if ("setAppBadge" in navigator) {
@@ -2529,7 +2529,7 @@ async function setupAutoBackup() {
   try {
     backupHandle = await showSaveFilePicker({
       suggestedName: "orbit-backup.json",
-      types: [{ description: "Orbit backup", accept: { "application/json": [".json"] } }],
+      types: [{ description: "Kith backup", accept: { "application/json": [".json"] } }],
     });
     backupBlocked = false;
     await kvPut("backupHandle", backupHandle);
@@ -2626,7 +2626,7 @@ async function registerPeriodicSync() {
     }
   } catch (e) { /* best-effort — needs installed PWA + engagement */ }
 }
-const APP_VERSION = "v16";
+const APP_VERSION = "v17";
 if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
   navigator.serviceWorker.register("sw.js").then(() => {
     if (Notification.permission === "granted") registerPeriodicSync();
@@ -2714,7 +2714,7 @@ if (_q.has("selftest")) setTimeout(() => {
   const wmap = weekItems(wdays);
   ok("weekItems keys are the 7 days", Object.keys(wmap).length === 7 && wdays.every(d => Array.isArray(wmap[d])));
   S.settings.milestones = {};
-  ok("milestone first touch", checkMilestones({ id: "mtest", name: "Zed Q", cadence: 30, interactions: [{ date: todayISO() }] })?.includes("orbit"));
+  ok("milestone first touch", checkMilestones({ id: "mtest", name: "Zed Q", cadence: 30, interactions: [{ date: todayISO() }] })?.includes("officially"));
   ok("milestone fires once", checkMilestones({ id: "mtest", name: "Zed Q", cadence: 30, interactions: [{ date: todayISO() }] }) === null);
   ok("milestone reconnect", !!checkMilestones({ id: "mtest2", name: "Rae", cadence: 14, interactions: [{ date: addDays(todayISO(), -200) }, { date: todayISO() }] }));
   ok("celebrate is a function", typeof celebrate === "function");
