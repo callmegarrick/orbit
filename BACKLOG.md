@@ -43,6 +43,8 @@ Priorities: lower friction to act · make the daily 10-second check-in stick · 
 ## Delight (started 2026-07-24 — joy, NOT addiction; reward the outcome, never app-usage)
 - [x] Delight 1 (2026-07-24): **Completion moments + real-connection milestones + logo easter egg.** Confetti burst (self-contained canvas, respects prefers-reduced-motion) on logging a touch / completing a to-do / plan / routine / clearing focus mode. Varied warm microcopy (TOUCH_CHEERS, CLEAR_LINES — never the same line twice). Milestones fire once and celebrate the OUTCOME: first touch ("X is officially in your orbit 🌟"), reconnecting after a long silence ("reconnected after N months 💫"), catch-up counts (10/25/50/100 🌿). Tap the orbit logo to spin it; 7 taps = hidden thank-you. SW v16. Selftest 42. NO streaks/points/engagement-bait — guardrails held.
 
+- [x] **Notes tab** (2026-07-25, Garrick's request): standalone notes — a place to jot/keep anything not tied to a person (ideas, lists, gift thoughts). Card grid, optional title + body, pin-to-top, edit, delete-with-undo, newest-first. Its own tab, accessible even before any people are added. (Caught + fixed a real bug: notes store full ISO timestamps; fmtNice needs date-only — sliced to YYYY-MM-DD.) SW v18. Selftest 44.
+
 ## Boundary-pushing loop (started 2026-07-11)
 See [IDEAS.md](IDEAS.md) — brainstorm ledger with verdicts. Iteration 1 shipped `orbit-notify.ps1` + `setup-morning-toast.bat`: native Windows toasts with real names, browser fully closed.
 

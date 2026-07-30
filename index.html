@@ -293,6 +293,15 @@ section.block { margin-bottom: 28px; }
 .wi-label { font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .week-empty { color: var(--muted); font-size: 13px; margin-top: 6px; padding: 4px; cursor: pointer; border-radius: 7px; display: inline-block; }
 .week-empty:hover { color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--surface)); }
+
+/* ---------- notes ---------- */
+.notes-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+.note-card { padding: 16px 17px; cursor: pointer; position: relative; display: flex; flex-direction: column; gap: 7px; min-height: 90px; }
+.note-card:hover { box-shadow: var(--shadow-lift); }
+.note-pin { position: absolute; top: 12px; right: 13px; font-size: 13px; }
+.note-title { font-weight: 600; font-size: 15.5px; padding-right: 18px; }
+.note-body { font-size: 13.5px; color: var(--ink-2); line-height: 1.5; white-space: pre-wrap; overflow: hidden; }
+.note-meta { font-size: 12px; color: var(--muted); margin-top: auto; }
 .day-panel { margin-top: 16px; }
 .day-panel h3 { font-size: 15px; margin: 0 0 4px; padding: 14px 18px 0; }
 .day-panel .empty-day { padding: 10px 18px 16px; color: var(--muted); font-size: 14px; }
@@ -474,6 +483,7 @@ const DEFAULTS = {
   tasks: [],
   plans: [],
   todos: [],
+  notes: [],
   occasions: BUILTIN_OCCASIONS.map(o => ({ ...o, enabled: true, done: {} })),
   settings: { birthdayLead: 7, occasionLead: 3, lastNotified: {} },
 };
@@ -490,6 +500,7 @@ function load() {
     }
     data.settings = Object.assign({ birthdayLead: 7, occasionLead: 3, lastNotified: {} }, data.settings);
     data.plans = data.plans ?? [];
+    data.notes = data.notes ?? [];
     // done to-dos fade out after a week; undone ones carry forward forever
     data.todos = (data.todos ?? []).filter(td => !td.done || !td.doneAt || daysSince(td.doneAt) <= 7);
     return data;
@@ -814,6 +825,7 @@ const TABS = [
   { id: "today", label: "Today" },
   { id: "people", label: "People" },
   { id: "calendar", label: "Calendar" },
+  { id: "notes", label: "Notes" },
   { id: "occasions", label: "Occasions" },
   { id: "settings", label: "Settings" },
 ];
@@ -834,10 +846,11 @@ function render() {
     `<button data-tab="${t.id}" class="${t.id === activeTab ? "active" : ""}">${t.label}${t.id === "today" && od ? `<span class="count">${od}</span>` : ""}</button>`
   ).join("");
   const v = $("#view");
-  if (!S.people.length && !S.tasks.length && activeTab !== "settings") { v.innerHTML = emptyState(); return; }
+  if (!S.people.length && !S.tasks.length && !["settings", "notes"].includes(activeTab)) { v.innerHTML = emptyState(); return; }
   if (activeTab === "today") v.innerHTML = renderToday();
   else if (activeTab === "people") v.innerHTML = renderPeople();
   else if (activeTab === "calendar") v.innerHTML = renderCalendar();
+  else if (activeTab === "notes") v.innerHTML = renderNotes();
   else if (activeTab === "occasions") v.innerHTML = renderOccasions();
   else v.innerHTML = renderSettings();
 }
@@ -1301,6 +1314,41 @@ function renderCalendar() {
       <span><i style="background:var(--aqua)"></i>Routine</span>
       <span><i style="background:var(--magenta)"></i>Plan</span>
     </div>${panel}`;
+}
+
+/* ---------- Notes ---------- */
+function noteSnippet(body, n) { const s = (body || "").replace(/\s+/g, " ").trim(); return s.length > n ? s.slice(0, n) + "…" : s; }
+function renderNotes() {
+  const notes = [...S.notes].sort((a, b) => (a.pinned === b.pinned ? ((b.updatedAt ?? "") > (a.updatedAt ?? "") ? 1 : -1) : a.pinned ? -1 : 1));
+  let html = `<section class="block"><div class="block-head"><h2>Notes</h2><button class="more" data-act="add-note">+ New note</button></div>`;
+  if (!notes.length) {
+    html += `<div class="card" style="padding:26px 24px;text-align:center"><div style="font-size:26px;margin-bottom:6px">📝</div><div style="font-weight:600;margin-bottom:4px">Nothing jotted yet</div><div style="color:var(--ink-2);font-size:14px;margin-bottom:16px">A place for anything worth keeping — ideas, lists, gift thoughts, a login to remember.</div><button class="btn primary" data-act="add-note">Write your first note</button></div>`;
+    return html + `</section>`;
+  }
+  html += `<div class="notes-grid">` + notes.map(nt => `<div class="note-card card" data-act="edit-note" data-id="${nt.id}">
+      ${nt.pinned ? `<span class="note-pin" title="Pinned">📌</span>` : ""}
+      ${nt.title ? `<div class="note-title">${esc(nt.title)}</div>` : ""}
+      <div class="note-body">${esc(noteSnippet(nt.body, 220)) || "<span style='color:var(--muted)'>(empty)</span>"}</div>
+      <div class="note-meta">${fmtNice((nt.updatedAt ?? nt.createdAt ?? todayISO()).slice(0, 10))}</div>
+    </div>`).join("") + `</div></section>`;
+  return html;
+}
+function noteModal(nt) {
+  const isNew = !nt;
+  nt = nt ?? { title: "", body: "", pinned: false };
+  openModal(`
+    <h2 class="serif">${isNew ? "New note" : "Note"}</h2>
+    <form id="noteForm" data-id="${nt.id ?? ""}">
+      <div class="field"><input name="title" value="${esc(nt.title ?? "")}" placeholder="Title (optional)" autocomplete="off" style="font-weight:600"></div>
+      <div class="field"><textarea name="body" rows="9" placeholder="Write anything…">${esc(nt.body ?? "")}</textarea></div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:14px;color:var(--ink-2);margin-bottom:4px;cursor:pointer">
+        <input type="checkbox" name="pinned" ${nt.pinned ? "checked" : ""}> 📌 Pin to top</label>
+      <div class="modal-actions">
+        ${!isNew ? `<button type="button" class="btn danger left" data-act="del-note" data-id="${nt.id}">Delete</button>` : ""}
+        <button type="button" class="btn" data-act="close">Cancel</button>
+        <button type="submit" class="btn primary">${isNew ? "Save note" : "Save"}</button>
+      </div>
+    </form>`);
 }
 
 /* ---------- Occasions ---------- */
@@ -2094,6 +2142,15 @@ document.addEventListener("click", e => {
     }
     case "open-queue": e.stopPropagation(); queueModal(id); break;
     case "open-review": reviewModal(); break;
+    case "add-note": noteModal(); break;
+    case "edit-note": noteModal(S.notes.find(x => x.id === id)); break;
+    case "del-note": {
+      const nt = S.notes.find(x => x.id === id);
+      S.notes = S.notes.filter(x => x.id !== id);
+      save(); closeModal(); render();
+      toast("Note deleted", () => { S.notes.push(nt); save(); render(); });
+      break;
+    }
     case "toggle-show-all": showAll = !showAll; render(); break;
     case "logo-spin": {
       const brand = el.closest(".brand");
@@ -2361,6 +2418,14 @@ document.addEventListener("submit", e => {
     openWA(p, text);
     closeModal();
     offerLog(p);
+  } else if (f.id === "noteForm") {
+    const id = f.dataset.id;
+    const data = { title: (fd.get("title") ?? "").trim(), body: (fd.get("body") ?? "").trim(), pinned: !!fd.get("pinned"), updatedAt: new Date().toISOString() };
+    if (!data.title && !data.body) { closeModal(); return; }
+    if (id) Object.assign(S.notes.find(x => x.id === id), data);
+    else S.notes.push({ id: uid(), createdAt: new Date().toISOString(), ...data });
+    save(); closeModal(); render();
+    if (!id) toast("Note saved 📝");
   } else if (f.id === "dayAddForm") {
     const raw = (fd.get("text") ?? "").trim();
     if (!raw) return;
@@ -2626,7 +2691,7 @@ async function registerPeriodicSync() {
     }
   } catch (e) { /* best-effort — needs installed PWA + engagement */ }
 }
-const APP_VERSION = "v17";
+const APP_VERSION = "v18";
 if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
   navigator.serviceWorker.register("sw.js").then(() => {
     if (Notification.permission === "granted") registerPeriodicSync();
@@ -2650,7 +2715,7 @@ async function forceUpdate() {
 
 /* ---------- boot ---------- */
 const _q = new URLSearchParams(location.search);
-if (_q.has("demo") && !S.people.length) { const s = SAMPLE(); S.people.push(...s.people); S.tasks.push(...s.tasks); S.plans.push(...s.plans); S.todos.push(...s.todos); save(); }
+if (_q.has("demo") && !S.people.length) { const s = SAMPLE(); S.people.push(...s.people); S.tasks.push(...s.tasks); S.plans.push(...s.plans); S.todos.push(...s.todos); if (!S.notes.length) S.notes.push({ id: uid(), title: "Gift ideas for Amma", body: "- that book on her tomato plants\n- a warm shawl", pinned: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), sample: true }); save(); }
 if (TABS.some(t => t.id === _q.get("tab"))) activeTab = _q.get("tab");
 if (_q.has("showall")) showAll = true; // test hook
 if (_q.has("focus")) setTimeout(() => { focusQueue = [...rightNowSnapshot]; focusIdx = 0; focusModal(); }, 400); // test hook
@@ -2719,6 +2784,8 @@ if (_q.has("selftest")) setTimeout(() => {
   ok("milestone reconnect", !!checkMilestones({ id: "mtest2", name: "Rae", cadence: 14, interactions: [{ date: addDays(todayISO(), -200) }, { date: todayISO() }] }));
   ok("celebrate is a function", typeof celebrate === "function");
   ok("pick returns member", TOUCH_CHEERS.includes(pick(TOUCH_CHEERS)));
+  ok("noteSnippet truncates", noteSnippet("a".repeat(300), 220).length === 221 && noteSnippet("hi", 220) === "hi");
+  ok("notes tab exists", TABS.some(t => t.id === "notes"));
   ok("age turns 30", birthdayAge({ birthday: `${todayDate().getFullYear() - 30}-12-31` }) === 30);
   const d = document.createElement("div"); d.id = "selftest"; d.style.display = "none";
   d.textContent = t.join(" | ");
