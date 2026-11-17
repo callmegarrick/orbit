@@ -180,6 +180,30 @@ section.block { margin-bottom: 28px; }
 .mine-row { display: flex; gap: 6px; align-items: stretch; }
 .mine-row .starter { flex: 1; }
 .mine-empty { font-size: 13.5px; color: var(--ink-2); background: var(--page); border: 1px dashed var(--border); border-radius: 10px; padding: 12px 14px; line-height: 1.5; }
+.tl-sub { font-size: 13.5px; color: var(--ink-2); margin: -10px 0 14px; }
+.tl-stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 12px; }
+.tl-stats > div { background: var(--page); border-radius: 10px; padding: 10px 12px; }
+.tl-stats b { display: block; font-family: "DM Serif Display", Georgia, serif; font-weight: 400; font-size: 22px; line-height: 1.15; font-variant-numeric: tabular-nums; }
+.tl-stats span { font-size: 12px; color: var(--muted); }
+.trend-closer { color: var(--good-text); }
+.trend-drifting { color: var(--critical); }
+.trend-steady, .trend-none { color: var(--ink-2); }
+.tl-mix { font-size: 13px; color: var(--ink-2); margin-bottom: 6px; }
+.tl-month { font-size: 11.5px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; color: var(--muted); margin: 16px 0 4px; }
+.tl-touch { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--hairline); font-size: 14px; }
+.tl-up { cursor: pointer; }
+.tl-up:hover .tl-note { color: var(--accent); }
+.tl-via { width: 30px; height: 30px; flex-shrink: 0; border-radius: 50%; border: 1px solid var(--border); background: var(--page); cursor: pointer; font-size: 14px; line-height: 1; padding: 0; }
+.tl-via:hover { border-color: var(--accent); }
+.tl-date { flex-shrink: 0; width: 64px; font-weight: 600; font-size: 13px; }
+.tl-note { flex: 1; min-width: 0; color: var(--ink-2); overflow-wrap: anywhere; }
+.tl-gap { font-size: 12px; color: var(--critical); text-align: center; padding: 6px 0; border-bottom: 1px dashed color-mix(in srgb, var(--critical) 35%, transparent); }
+.tl-hint { font-size: 12px; color: var(--muted); margin-top: 10px; }
+.tl-link { cursor: pointer; }
+.tl-link:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+.via-seg { display: flex; gap: 6px; flex-wrap: wrap; }
+.via-seg button { font: inherit; font-size: 13px; padding: 6px 12px; border-radius: 99px; border: 1px solid var(--border); background: var(--surface); color: var(--ink-2); cursor: pointer; }
+.via-seg button.on { background: var(--accent); color: #fff; border-color: transparent; }
 .recap-fu { cursor: pointer; color: color-mix(in srgb, var(--gold) 50%, var(--ink)); }
 .recap-fu:hover { text-decoration: underline; text-underline-offset: 2px; }
 .linkish { background: none; border: none; padding: 0; font: inherit; font-size: 12.5px; color: var(--accent); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; margin-left: 4px; }
@@ -580,6 +604,46 @@ function healthScore(p) {
   for (const g of recent) { num += w * Math.min(1, p.cadence / g); den += w; w *= 0.82; }
   return Math.round((num / den) * 100);
 }
+/* ---------- tracking: how you connect, and how the rhythm is going ---------- */
+const VIAS = [["text", "💬", "Text"], ["call", "📞", "Call"], ["met", "🤝", "Met"]];
+const viaIcon = v => (VIAS.find(x => x[0] === v) ?? [null, "✓"])[1];
+function touchStats(p) {
+  const dates = (p.interactions ?? []).map(i => i.date).sort();
+  const gaps = [];
+  for (let i = 1; i < dates.length; i++) {
+    const g = Math.round((fromISO(dates[i]) - fromISO(dates[i - 1])) / DAY);
+    if (g > 0) gaps.push(g); // two touches on one day aren't a gap
+  }
+  const sorted = [...gaps].sort((a, b) => a - b), mid = Math.floor(sorted.length / 2);
+  const median = !sorted.length ? null : sorted.length % 2 ? sorted[mid] : Math.round((sorted[mid - 1] + sorted[mid]) / 2);
+  const lastDays = dates.length ? daysSince(dates[dates.length - 1]) : null;
+  let trend = null;
+  if (gaps.length >= 4) {
+    const avg = a => a.reduce((s, x) => s + x, 0) / a.length;
+    const recent = avg(gaps.slice(-3)), before = avg(gaps.slice(-6, -3));
+    trend = recent < before * 0.8 ? "closer" : recent > before * 1.25 ? "drifting" : "steady";
+  }
+  if (lastDays !== null && dates.length >= 2 && lastDays > p.cadence * 1.5) trend = "drifting"; // a long silence right now outweighs history
+  const year = todayISO().slice(0, 4);
+  const via = { text: 0, call: 0, met: 0 };
+  for (const i of p.interactions ?? []) if (via[i.via] !== undefined) via[i.via]++;
+  return { count: dates.length, thisYear: dates.filter(d => d.startsWith(year)).length, lastDays, median, trend, via, longest: gaps.length ? Math.max(...gaps) : null };
+}
+// newest first, with a marker wherever the gap ran longer than you aim for
+function timelineEntries(p) {
+  const ints = (p.interactions ?? []).map((it, idx) => ({ ...it, idx }))
+    .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : b.idx - a.idx));
+  const out = [];
+  ints.forEach((it, i) => {
+    out.push({ type: "touch", ...it });
+    const older = ints[i + 1];
+    if (older) {
+      const gap = Math.round((fromISO(it.date) - fromISO(older.date)) / DAY);
+      if (gap > p.cadence) out.push({ type: "gap", days: gap, over: gap - p.cadence });
+    }
+  });
+  return out;
+}
 function healthLabel(score) {
   if (score === null) return { word: "New", color: "var(--muted)" };
   if (score >= 78) return { word: "Solid", color: "var(--good)" };
@@ -822,15 +886,15 @@ function addFollowup(personId, about, date) {
   S.followups.push(fu);
   return fu;
 }
-function completeFollowup(fuId, viaFocus) {
+function completeFollowup(fuId, viaFocus, via) {
   const fu = S.followups.find(f => f.id === fuId);
   if (!fu) return;
   fu.done = true; fu.doneAt = todayISO();
   const p = S.people.find(x => x.id === fu.personId);
   if (!p) { save(); render(); return; }
   const note = fu.about ? `asked about ${fu.about}` : "checked in";
-  if (viaFocus) { p.interactions = p.interactions ?? []; p.interactions.push({ date: todayISO(), note }); p.snoozedUntil = null; save(); return; }
-  logTouchOn(p.id, todayISO(), note);
+  if (viaFocus) { p.interactions = p.interactions ?? []; p.interactions.push({ date: todayISO(), note, ...(via ? { via } : {}) }); p.snoozedUntil = null; save(); return; }
+  logTouchOn(p.id, todayISO(), note, via);
   const prev = undoFn;
   undoFn = () => { fu.done = false; delete fu.doneAt; prev && prev(); };
 }
@@ -864,15 +928,16 @@ function followupModal(pid, fu) {
 function offerAsked(p, fu) {
   const t = $("#toast");
   undoFn = null;
-  t.innerHTML = `Opened WhatsApp for ${esc(p.name.split(" ")[0])} <button data-act="fu-done" data-id="${fu.id}">✓ Asked</button>`;
+  t.innerHTML = `Opened WhatsApp for ${esc(p.name.split(" ")[0])} <button data-act="fu-done" data-id="${fu.id}" data-via="text">✓ Asked</button>`;
   t.classList.add("show");
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.remove("show"), 8000);
 }
-function offerLog(p) {
+function offerLog(p, via = "text") {
   const t = $("#toast");
   undoFn = null;
-  t.innerHTML = `Opened WhatsApp for ${esc(p.name.split(" ")[0])} <button data-act="log" data-id="${p.id}">✓ Log touch</button>`;
+  const first = esc(p.name.split(" ")[0]);
+  t.innerHTML = `${via === "call" ? `Calling ${first}` : `Opened a chat with ${first}`} <button data-act="log" data-id="${p.id}" data-via="${via}">✓ Log it</button>`;
   t.classList.add("show");
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.remove("show"), 6500);
@@ -1100,8 +1165,8 @@ function msgModal(id, fuId, sit) {
         <div class="hint">Nothing sends automatically — WhatsApp opens with this ready, you press send.</div></div>
       <div class="alt-channels">
         <span style="font-size:12.5px;color:var(--muted)">Or reach ${first} by</span>
-        <a class="btn sm" href="tel:+${(p.phone ?? "").replace(/\D/g, "")}" data-act="alt-reach" data-id="${id}">📞 Call</a>
-        <a class="btn sm" href="sms:+${(p.phone ?? "").replace(/\D/g, "")}?body=${encodeURIComponent(firstText)}" data-act="alt-reach" data-id="${id}">💬 SMS</a>
+        <a class="btn sm" href="tel:+${(p.phone ?? "").replace(/\D/g, "")}" data-act="alt-reach" data-id="${id}" data-via="call">📞 Call</a>
+        <a class="btn sm" href="sms:+${(p.phone ?? "").replace(/\D/g, "")}?body=${encodeURIComponent(firstText)}" data-act="alt-reach" data-id="${id}" data-via="text">💬 SMS</a>
       </div>
       <div class="modal-actions">
         <button type="button" class="btn left" data-act="msg-blank" data-id="${id}">Open chat blank</button>
@@ -1461,7 +1526,7 @@ function renderPeople() {
         </div>
         ${noteLine(p)}
         <div class="person-meta">
-          <span>${st.everContacted ? `last touch ${agoDays(st.since)}` : "never logged"}</span>
+          <span class="tl-link" data-act="history" data-id="${p.id}" title="See the timeline">${st.everContacted ? `last touch ${agoDays(st.since)}` : "never logged"} ›</span>
           <span class="health" title="${h === null ? "Log a couple of touches to see a trend" : `Consistency score: ${h}%`}"><span class="dot" style="background:${hl.color}"></span>${hl.word}</span>
         </div>
         <div class="person-actions">
@@ -1839,7 +1904,7 @@ function personModal(p) {
         <textarea name="notes" rows="2" placeholder="How you met, what matters to them…">${esc(p.notes ?? "")}</textarea></div>
       <div class="modal-actions">
         ${!isNew ? `<button type="button" class="btn danger left" data-act="del-person" data-id="${p.id}">Delete</button>` : ""}
-        ${!isNew ? `<button type="button" class="btn" data-act="history" data-id="${p.id}">History (${(p.interactions ?? []).length})</button>` : ""}
+        ${!isNew ? `<button type="button" class="btn" data-act="history" data-id="${p.id}">📈 Timeline (${(p.interactions ?? []).length})</button>` : ""}
         <button type="button" class="btn" data-act="close">Cancel</button>
         <button type="submit" class="btn primary">${isNew ? "Add person" : "Save"}</button>
       </div>
@@ -2073,13 +2138,42 @@ function occasionModal() {
     </form>`);
 }
 function historyModal(p) {
-  const items = [...(p.interactions ?? [])].sort((a, b) => b.date < a.date ? -1 : 1);
+  if (!p) return;
+  const st = touchStats(p);
+  const hl = healthLabel(healthScore(p));
+  const trendWord = { closer: "Getting closer", steady: "Steady", drifting: "Drifting" }[st.trend] ?? "Too early";
+  const viaBits = VIAS.filter(([k]) => st.via[k]).map(([k, icon, label]) => `${icon} ${st.via[k]} ${label.toLowerCase()}${st.via[k] === 1 ? "" : k === "met" ? "" : "s"}`);
+  const upcoming = [
+    ...personFollowups(p.id).map(f => ({ date: f.date, html: `⏰ ${f.about ? `Ask about ${esc(f.about)}` : "Check in"}`, act: "fu-edit", id: f.id })),
+    ...S.plans.filter(pl => !pl.done && pl.personId === p.id).map(pl => ({ date: pl.date, html: `📌 ${esc(pl.title)}`, act: "edit-plan", id: pl.id })),
+  ].sort((a, b) => (a.date > b.date ? 1 : -1));
+  let lastMonth = "";
+  const list = timelineEntries(p).map(e => {
+    if (e.type === "gap") return `<div class="tl-gap">${e.days} days apart (you aim for every ${p.cadence})</div>`;
+    const m = e.date.slice(0, 7);
+    const head = m !== lastMonth ? `<div class="tl-month">${MONTHS[+m.slice(5) - 1]} ${m.slice(0, 4)}</div>` : "";
+    lastMonth = m;
+    return `${head}<div class="tl-touch">
+      <button type="button" class="tl-via" data-act="touch-via" data-id="${p.id}" data-i="${e.idx}" title="How you connected: tap to change">${viaIcon(e.via)}</button>
+      <span class="tl-date">${fmtNice(e.date)}</span>
+      <span class="tl-note">${e.note ? esc(e.note) : ""}</span>
+      <button class="btn ghost sm" data-act="del-touch" data-id="${p.id}" data-i="${e.idx}" aria-label="Delete this touch">✕</button>
+    </div>`;
+  }).join("");
   openModal(`
-    <h2 class="serif">${esc(p.name)} — history</h2>
-    ${items.length ? items.map(i => `<div class="queue-row"><span class="qname">${fmtNice(i.date)}${i.note ? ` — <span style="color:var(--ink-2);font-weight:400">${esc(i.note)}</span>` : ""}</span>
-      <button class="btn ghost sm" data-act="del-touch" data-id="${p.id}" data-date="${i.date}">✕</button></div>`).join("")
-      : `<p style="color:var(--muted)">No touches logged yet.</p>`}
-    <div class="modal-actions"><button class="btn left" data-act="log-when" data-id="${p.id}">+ Add past touch</button><button class="btn" data-act="edit-person" data-id="${p.id}">← Back</button><button class="btn primary" data-act="close">Close</button></div>`);
+    <h2 class="serif">${esc(p.name)}</h2>
+    <div class="tl-sub">Every ${p.cadence} days · <span style="color:${hl.color}">●</span> ${hl.word}${hl.word === "New" ? "" : " overall"}</div>
+    ${st.count ? `<div class="tl-stats">
+      <div><b>${st.lastDays === 0 ? "Today" : st.lastDays === 1 ? "Yesterday" : `${st.lastDays}d ago`}</b><span>last connected</span></div>
+      <div><b>${st.thisYear}</b><span>times in ${todayISO().slice(0, 4)}</span></div>
+      <div><b>${st.median === null ? "—" : `${st.median}d`}</b><span>usual gap · aim ${p.cadence}d</span></div>
+      <div><b class="trend-${st.trend ?? "none"}">${trendWord}</b><span>lately</span></div>
+    </div>` : ""}
+    ${viaBits.length ? `<div class="tl-mix">How you connect: ${viaBits.join(" · ")}</div>` : ""}
+    ${upcoming.length ? `<div class="tl-month">Coming up</div>${upcoming.map(u => `<div class="tl-touch tl-up" data-act="${u.act}" data-id="${u.id}"><span class="tl-date">${fmtNice(u.date)}</span><span class="tl-note">${u.html}</span></div>`).join("")}` : ""}
+    ${list || `<p style="color:var(--muted);margin:12px 0">Nothing logged yet. Tap ✓ Done after you talk, and it starts here.</p>`}
+    <p class="tl-hint">Tap an icon to mark how you connected.</p>
+    <div class="modal-actions"><button class="btn left" data-act="log-when" data-id="${p.id}">+ Add past touch</button><button class="btn" data-act="edit-person" data-id="${p.id}">Edit</button><button class="btn primary" data-act="close">Close</button></div>`);
 }
 function queueModal(occId) {
   const o = S.occasions.find(x => x.id === occId);
@@ -2308,12 +2402,12 @@ function toast(msg, undo) {
 }
 
 /* ---------- actions ---------- */
-function logTouchOn(id, dateISO, note) {
+function logTouchOn(id, dateISO, note, via) {
   const p = S.people.find(x => x.id === id);
   if (!p) return;
   if (dateISO > todayISO()) dateISO = todayISO();
   p.interactions = p.interactions ?? [];
-  p.interactions.push({ date: dateISO, ...(note ? { note } : {}) });
+  p.interactions.push({ date: dateISO, ...(note ? { note } : {}), ...(VIAS.some(v => v[0] === via) ? { via } : {}) });
   p.snoozedUntil = null;
   const isToday = dateISO === todayISO();
   const ms = checkMilestones(p); // records the milestone so it fires only once
@@ -2332,25 +2426,29 @@ function logTouchOn(id, dateISO, note) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.remove("show"), 6500);
 }
+const viaSeg = (selId, current) => `<div class="via-seg" id="${selId}">${VIAS.map(([k, icon, label]) => `<button type="button" data-via="${k}" class="${current === k ? "on" : ""}">${icon} ${label}</button>`).join("")}</div>`;
 function noteLastModal(id) {
   const p = S.people.find(x => x.id === id);
   if (!p?.interactions?.length) return;
+  const latest = p.interactions[p.interactions.length - 1];
   openModal(`
     <h2 class="serif">What did you talk about?</h2>
     <p style="font-size:13.5px;color:var(--ink-2);margin-bottom:12px">One line is enough — future you will open the next chat with it.</p>
     <form id="noteLastForm" data-id="${id}">
       <div class="field"><textarea name="note" rows="3" placeholder="her job interview, the Goa trip, his knee surgery…"></textarea></div>
+      <div class="field"><label>How did you connect? <span style="font-weight:400;color:var(--muted)">(optional)</span></label>${viaSeg("noteVia", latest.via)}</div>
       <div class="modal-actions">
         <button type="button" class="btn" data-act="close">Skip</button>
         <button type="submit" class="btn primary">Save note</button>
       </div>
     </form>`);
 }
-function logTouch(id, note) { logTouchOn(id, todayISO(), note); }
+function logTouch(id, note, via) { logTouchOn(id, todayISO(), note, via); }
 function whenModal(id) {
   const p = S.people.find(x => x.id === id);
   openModal(`
     <h2 class="serif">When did you catch up with ${esc(p.name.split(" ")[0])}?</h2>
+    <div class="field"><label>How <span style="font-weight:400;color:var(--muted)">(optional, pick first)</span></label>${viaSeg("whenVia")}</div>
     <div class="seg" style="margin-bottom:16px">
       <button data-act="log-on" data-id="${id}" data-date="${todayISO()}">Today</button>
       <button data-act="log-on" data-id="${id}" data-date="${addDays(todayISO(), -1)}">Yesterday</button>
@@ -2381,6 +2479,9 @@ const SAMPLE = () => {
   ];
   people[0].interactions.push({ date: addDays(t, -183), note: "her tomato plants finally fruited" });
   people[0].circle = "Appa · your cousins Vik & Anu";
+  people[0].interactions.forEach((it, i) => { it.via = ["call", "text", "call", "met", "call"][i % 5]; });
+  people[1].interactions.forEach((it, i) => { if (i % 2) it.via = "call"; });
+  people[3].interactions[0].via = "text";
   people[0].tone = "respectful";   // Amma
   people[0].topics = ["Appa's health checkup"];
   people[1].tone = "respectful";   // Thatha & Paati
@@ -2427,7 +2528,7 @@ document.addEventListener("click", e => {
     case "edit-task": taskModal(S.tasks.find(t => t.id === id)); break;
     case "add-occasion": occasionModal(); break;
     case "history": historyModal(S.people.find(p => p.id === id)); break;
-    case "log": e.stopPropagation(); logTouch(id); break;
+    case "log": e.stopPropagation(); logTouch(id, undefined, el.dataset.via); break;
     case "msg": e.stopPropagation(); msgModal(id); break;
     case "msg-shuffle": msgModal(id, "none", el.dataset.sit || "checkin"); break;
     case "msg-general": msgModal(id, "none"); break;
@@ -2464,7 +2565,7 @@ document.addEventListener("click", e => {
     case "fu-done": {
       e.stopPropagation();
       $("#toast").classList.remove("show");
-      completeFollowup(id);
+      completeFollowup(id, false, el.dataset.via);
       break;
     }
     case "fu-del": {
@@ -2474,7 +2575,7 @@ document.addEventListener("click", e => {
       if (fu) toast("Follow-up removed", () => { S.followups.push(fu); save(); render(); });
       break;
     }
-    case "alt-reach": { const p = S.people.find(x => x.id === id); closeModal(); if (p) offerLog(p); break; }
+    case "alt-reach": { const p = S.people.find(x => x.id === id); closeModal(); if (p) offerLog(p, el.dataset.via || "text"); break; }
     case "topic-del": {
       const p = S.people.find(x => x.id === id);
       p.topics = (p.topics ?? []).filter((_, i) => i !== Number(el.dataset.i));
@@ -2487,7 +2588,7 @@ document.addEventListener("click", e => {
       break;
     }
     case "log-when": e.stopPropagation(); whenModal(id); break;
-    case "log-on": e.stopPropagation(); logTouchOn(id, el.dataset.date); break;
+    case "log-on": e.stopPropagation(); logTouchOn(id, el.dataset.date, undefined, $("#whenVia .on")?.dataset.via); break;
     case "note-last": e.stopPropagation(); $("#toast").classList.remove("show"); noteLastModal(id); break;
     case "wa-then-ask": {
       e.stopPropagation();
@@ -2496,7 +2597,7 @@ document.addEventListener("click", e => {
         const p = S.people.find(x => x.id === id);
         toast(`Opened WhatsApp for ${p.name} — log it as a touch?`, null);
         const t = $("#toast");
-        t.innerHTML = `Opened WhatsApp for ${esc(p.name)} <button data-act="log" data-id="${id}">✓ Log touch</button>`;
+        t.innerHTML = `Opened WhatsApp for ${esc(p.name)} <button data-act="log" data-id="${id}" data-via="text">✓ Log touch</button>`;
       }, 400);
       break;
     }
@@ -2536,9 +2637,25 @@ document.addEventListener("click", e => {
       break;
     }
     case "del-touch": {
+      // by position, so deleting one touch doesn't take out others logged the same day
       const p = S.people.find(x => x.id === id);
-      p.interactions = p.interactions.filter(i => i.date !== el.dataset.date);
-      save(); historyModal(p); render();
+      const i = Number(el.dataset.i);
+      if (p && p.interactions?.[i]) {
+        const [gone] = p.interactions.splice(i, 1);
+        save(); historyModal(p); render();
+        toast("Touch deleted", () => { p.interactions.splice(i, 0, gone); save(); historyModal(p); render(); });
+      }
+      break;
+    }
+    case "touch-via": {
+      const p = S.people.find(x => x.id === id);
+      const t = p?.interactions?.[Number(el.dataset.i)];
+      if (t) {
+        const order = [undefined, "text", "call", "met"];
+        const next = order[(order.indexOf(t.via) + 1) % order.length];
+        if (next) t.via = next; else delete t.via;
+        save(); historyModal(p);
+      }
       break;
     }
     case "del-occasion": {
@@ -2593,7 +2710,7 @@ document.addEventListener("click", e => {
         if (pl) {
           pl.done = true; pl.doneAt = today;
           const tp = pl.personId ? S.people.find(p => p.id === pl.personId) : null;
-          if (tp) { tp.interactions = tp.interactions ?? []; tp.interactions.push({ date: today, note: pl.title }); tp.snoozedUntil = null; }
+          if (tp) { tp.interactions = tp.interactions ?? []; tp.interactions.push({ date: today, note: pl.title, via: "met" }); tp.snoozedUntil = null; }
         }
       } else if (item.kind === "routine") {
         const t = S.tasks.find(x => x.id === item.id);
@@ -2664,7 +2781,7 @@ document.addEventListener("click", e => {
       const person = pl.personId ? S.people.find(p => p.id === pl.personId) : null;
       if (person) {
         person.interactions = person.interactions ?? [];
-        person.interactions.push({ date: todayISO(), note: pl.title });
+        person.interactions.push({ date: todayISO(), note: pl.title, via: "met" });
         person.snoozedUntil = null;
       }
       const msP = person ? checkMilestones(person) : null;
@@ -2698,7 +2815,7 @@ document.addEventListener("click", e => {
       if (!o.done[year].includes(id)) o.done[year].push(id);
       // also count as a touch
       p.interactions = p.interactions ?? [];
-      if (!p.interactions.some(i => i.date === todayISO())) p.interactions.push({ date: todayISO(), note: `${o.name} wishes` });
+      if (!p.interactions.some(i => i.date === todayISO())) p.interactions.push({ date: todayISO(), note: `${o.name} wishes`, via: "text" });
       save();
       setTimeout(() => queueModal(o.id), 300);
       break;
@@ -2782,6 +2899,14 @@ document.addEventListener("click", e => {
 
 // cadence preset segment control
 document.addEventListener("click", e => {
+  const vb = e.target.closest(".via-seg button");
+  if (vb) {
+    // single choice, and tapping the chosen one clears it (how you connected is optional)
+    const was = vb.classList.contains("on");
+    $$(".via-seg button", vb.parentElement).forEach(x => x.classList.remove("on"));
+    if (!was) vb.classList.add("on");
+    return;
+  }
   const w = e.target.closest("#fuWhen button");
   if (w) {
     $$("#fuWhen button").forEach(x => x.classList.remove("on"));
@@ -2904,14 +3029,17 @@ document.addEventListener("submit", e => {
   } else if (f.id === "noteLastForm") {
     const p = S.people.find(x => x.id === f.dataset.id);
     const note = (fd.get("note") ?? "").trim();
-    if (p?.interactions?.length && note) {
-      const latest = p.interactions.reduce((a, b) => (a.date > b.date ? a : b));
-      latest.note = note;
-      save(); render(); toast("Noted 📝 — it'll be there next time");
+    const via = $("#noteVia .on")?.dataset.via;
+    if (p?.interactions?.length && (note || via)) {
+      // the touch just logged is the last one added, which is what this note is about
+      const latest = p.interactions[p.interactions.length - 1];
+      if (note) latest.note = note;
+      if (via) latest.via = via;
+      save(); render(); toast(note ? "Noted 📝 — it'll be there next time" : "Saved ✓");
     }
     closeModal();
   } else if (f.id === "logWhenForm") {
-    logTouchOn(f.dataset.id, fd.get("date") || todayISO(), (fd.get("note") ?? "").trim());
+    logTouchOn(f.dataset.id, fd.get("date") || todayISO(), (fd.get("note") ?? "").trim(), $("#whenVia .on")?.dataset.via);
   } else if (f.id === "csvForm") {
     const cadence = Number(fd.get("cadence")) || 30;
     const picks = fd.getAll("pick").map(Number);
@@ -3137,7 +3265,7 @@ async function registerPeriodicSync() {
     }
   } catch (e) { /* best-effort — needs installed PWA + engagement */ }
 }
-const APP_VERSION = "v21";
+const APP_VERSION = "v22";
 if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
   navigator.serviceWorker.register("sw.js").then(() => {
     if (Notification.permission === "granted") registerPeriodicSync();
@@ -3277,6 +3405,23 @@ if (_q.has("selftest")) setTimeout(() => {
   S.settings.savedMsgs = ["Yo {name}"];
   ok("mine lists saved messages", situationStarters(sp, "mine").join() === "Yo {name}" && fillTemplate("Yo {name}", sp) === "Yo Rohan");
   S.settings.savedMsgs = savedBefore;
+  // tracking
+  const tpD = n => addDays(todayISO(), -n);
+  const closerP = { cadence: 30, interactions: [100, 70, 40, 25, 12, 5].map((n, i) => ({ date: tpD(n), ...(i < 3 ? { via: "call" } : i === 3 ? { via: "met" } : {}) })) };
+  const cs = touchStats(closerP);
+  ok("stats: count, last touch, median gap", cs.count === 6 && cs.lastDays === 5 && cs.median === 15 && cs.longest === 30);
+  ok("stats: gaps shrinking reads as getting closer", cs.trend === "closer");
+  ok("stats: how you connect is counted", cs.via.call === 3 && cs.via.met === 1 && cs.via.text === 0);
+  ok("stats: this year counts only this year", cs.thisYear === closerP.interactions.filter(i => i.date.startsWith(todayISO().slice(0, 4))).length);
+  const driftP = { cadence: 30, interactions: [190, 180, 170, 160, 120, 70, 10].map(n => ({ date: tpD(n) })) };
+  ok("stats: gaps widening reads as drifting", touchStats(driftP).trend === "drifting");
+  ok("stats: a long silence now reads as drifting", touchStats({ cadence: 10, interactions: [60, 50, 40, 30, 20].map(n => ({ date: tpD(n) })) }).trend === "drifting");
+  ok("stats: too little history gives no trend", touchStats({ cadence: 30, interactions: [{ date: tpD(3) }] }).trend === null && touchStats({ cadence: 30, interactions: [] }).median === null);
+  ok("stats: two touches in one day aren't a zero gap", touchStats({ cadence: 30, interactions: [{ date: tpD(20) }, { date: tpD(5) }, { date: tpD(5) }] }).median === 15);
+  const tl = timelineEntries({ cadence: 14, interactions: [{ date: tpD(40), note: "old" }, { date: tpD(5) }, { date: tpD(10), via: "call" }] });
+  ok("timeline: newest first with a long-gap marker", tl.map(e => e.type).join() === "touch,touch,gap,touch" && tl[2].days === 30 && tl[2].over === 16);
+  ok("timeline: entries keep their index for delete/edit", tl[0].idx === 1 && tl[1].idx === 2 && tl[3].idx === 0 && tl[1].via === "call");
+  ok("viaIcon", viaIcon("call") === "📞" && viaIcon(undefined) === "✓");
   ok("age turns 30", birthdayAge({ birthday: `${todayDate().getFullYear() - 30}-12-31` }) === 30);
   const d = document.createElement("div"); d.id = "selftest"; d.style.display = "none";
   d.textContent = t.join(" | ");
