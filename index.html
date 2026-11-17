@@ -169,6 +169,17 @@ section.block { margin-bottom: 28px; }
 .focus-topics { font-size: 12.5px; color: color-mix(in srgb, var(--magenta) 70%, var(--ink)); margin-top: 3px; }
 .focus-fu { font-size: 12.5px; color: color-mix(in srgb, var(--gold) 55%, var(--ink)); margin-top: 3px; font-weight: 600; }
 .fu-note { background: color-mix(in srgb, var(--gold) 14%, var(--surface)); }
+.sit-row { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; margin: 0 -2px; }
+.sit-row::-webkit-scrollbar { display: none; }
+.sit-row button {
+  flex-shrink: 0; font: inherit; font-size: 13px; font-weight: 500; padding: 6px 12px; border-radius: 99px;
+  border: 1px solid var(--border); background: var(--surface); color: var(--ink-2); cursor: pointer; white-space: nowrap;
+}
+.sit-row button:hover { color: var(--ink); border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
+.sit-row button.on { background: var(--accent); color: #fff; border-color: transparent; }
+.mine-row { display: flex; gap: 6px; align-items: stretch; }
+.mine-row .starter { flex: 1; }
+.mine-empty { font-size: 13.5px; color: var(--ink-2); background: var(--page); border: 1px dashed var(--border); border-radius: 10px; padding: 12px 14px; line-height: 1.5; }
 .recap-fu { cursor: pointer; color: color-mix(in srgb, var(--gold) 50%, var(--ink)); }
 .recap-fu:hover { text-decoration: underline; text-underline-offset: 2px; }
 .linkish { background: none; border: none; padding: 0; font: inherit; font-size: 12.5px; color: var(--accent); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; margin-left: 4px; }
@@ -758,21 +769,22 @@ function parseCapture(raw) {
 
 /* ---------- follow-ups: check back in on something they told you ---------- */
 const escRe = s => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+// one of each: [how did it go (an event that happened), any news (fits anything), how's it going (ongoing)]
 const FOLLOWUP_LIBRARY = {
   respectful: [
     "Hi {name}, how did {about} go? Hope it went well.",
-    "Hello {name}! Just wanted to ask how {about} went.",
-    "Hi {name}, I was thinking about {about}. How are things?",
+    "Hello {name}! Any news on {about}?",
+    "Hi {name}, I was thinking about {about}. How is it going?",
   ],
   warm: [
     "Hey {name}! How did {about} go?",
     "Hi {name}! Any news on {about}?",
-    "Hey {name}, been thinking about {about}. How did it go?",
+    "Hey {name}, how's {about} going?",
   ],
   playful: [
-    "{name}!! Update on {about}. Now.",
     "Okay {name}, how did {about} go? Tell me everything",
-    "So?? How did {about} go, {name}?",
+    "{name}!! Update on {about}. Now.",
+    "So?? How's {about} going, {name}?",
   ],
 };
 const GENERIC_FOLLOWUP = {
@@ -869,20 +881,199 @@ function openWA(p, text) {
   const digits = (p.phone ?? "").replace(/\D/g, "");
   window.open(`https://wa.me/${digits}${text ? `?text=${encodeURIComponent(text)}` : ""}`, "_blank", "noopener");
 }
-function msgModal(id, fuId) {
+/* ---------- responses by situation ---------- */
+const SITUATIONS = [
+  ["checkin", "Check in"], ["followup", "Follow up"], ["plan", "Make a plan"], ["congrats", "Congrats"],
+  ["tough", "Tough time"], ["late", "Late reply"], ["thanks", "Thanks"], ["birthday", "Birthday"], ["mine", "⭐ Mine"],
+];
+const SITUATION_LIBRARY = {
+  plan: {
+    respectful: [
+      "Hi {name}, I'd love to come see you soon. When would be a good time?",
+      "Hello {name}! Are you free this weekend? Would love to visit.",
+      "Hi {name}, it's been too long. Can I come over one of these days?",
+      "Hi {name}, shall we plan a lunch together soon?",
+    ],
+    warm: [
+      "Hey {name}! We should catch up properly. Free this weekend?",
+      "Hi {name}! Coffee sometime this week?",
+      "Hey {name}, let's actually meet this month. What does your week look like?",
+      "Hey {name}! Dinner soon? Pick a day.",
+    ],
+    playful: [
+      "{name}. Us. This weekend. Food. Thoughts?",
+      "Okay we keep saying we'll meet. Saturday? Don't say no {name}",
+      "{name}! Plan time. When are you free, no excuses",
+      "Calling an emergency catch-up, {name}. When are you free?",
+    ],
+  },
+  congrats: {
+    respectful: [
+      "Congratulations, {name}! So happy for you.",
+      "Hi {name}, just heard the news. Many congratulations!",
+      "Congratulations {name}! You truly deserve this.",
+      "Hearty congratulations, {name}! Wishing you all the best.",
+    ],
+    warm: [
+      "Congrats {name}! So so happy for you",
+      "Just heard!! Congratulations {name}, you deserve this",
+      "{name}!! Congrats, this is huge",
+      "Proud of you {name}. Congrats!",
+    ],
+    playful: [
+      "{name}!!! Look at you go. Congrats!!",
+      "Okay this calls for a treat. Congrats {name}!",
+      "Congrats {name}! Party when?",
+      "Who's this legend? Oh wait it's {name}. Congrats!!",
+    ],
+  },
+  tough: {
+    respectful: [
+      "Hi {name}, I heard what happened. I'm thinking of you. Please let me know if you need anything.",
+      "Hello {name}, just wanted you to know I'm here for you.",
+      "Hi {name}, sending you strength. Call me whenever you'd like to talk.",
+      "Hi {name}, I'm so sorry to hear. Please take care of yourself.",
+    ],
+    warm: [
+      "Hey {name}, I heard. I'm really sorry. I'm here if you want to talk.",
+      "Thinking of you {name}. No need to reply, just wanted you to know.",
+      "Hey {name}, that sounds really hard. Want to talk, or want a distraction?",
+      "{name}, I'm around this week. Say the word and I'll come by.",
+    ],
+    playful: [
+      "Hey {name}, heard things have been rough. Want me to come over with food?",
+      "{name}, you don't have to reply. Just know I'm here, always.",
+      "Rough week? I'm free whenever you need a distraction, {name}",
+      "Sending a hug your way {name}. Call me if you want to vent.",
+    ],
+  },
+  late: {
+    respectful: [
+      "Hi {name}, so sorry for the late reply! How are you?",
+      "Hello {name}, apologies for not responding sooner. Hope all is well with you.",
+      "Hi {name}, sorry it took me so long to get back. How have you been?",
+      "Hi {name}, I'm sorry I missed your message. How are things?",
+    ],
+    warm: [
+      "Hey {name}! Sorry for the super late reply. How are you?",
+      "Hi {name}, I'm so sorry I went quiet. Things got busy. How've you been?",
+      "Ahh sorry {name}, I saw this and forgot to reply. Tell me everything",
+      "Hey {name}, sorry for disappearing! What's new?",
+    ],
+    playful: [
+      "Okay I'm the worst at replying. Sorry {name}! What's up?",
+      "{name}, I have no excuse. Sorry for the late reply",
+      "Back from the dead. Sorry {name}! How are you?",
+      "Sorry sorry sorry {name}. Replying now before I forget again",
+    ],
+  },
+  thanks: {
+    respectful: [
+      "Thank you so much, {name}. It really means a lot.",
+      "Hi {name}, thank you for everything. I'm very grateful.",
+      "Thank you {name}, that was really kind of you.",
+      "Hello {name}, I just wanted to say thank you.",
+    ],
+    warm: [
+      "Thank you {name}! Really appreciate it",
+      "Hey {name}, thanks for today. Meant a lot",
+      "You're the best, {name}. Thank you",
+      "Thanks so much {name}, seriously",
+    ],
+    playful: [
+      "{name} you absolute legend. Thank you!",
+      "I owe you one. Okay maybe two. Thanks {name}!",
+      "What would I do without you {name}. Thank you!!",
+      "Thanks {name}! Next coffee's on me",
+    ],
+  },
+  birthday: {
+    respectful: [
+      "Happy birthday, {name}! Wishing you good health and happiness always.",
+      "Many happy returns of the day, {name}! Have a wonderful year ahead.",
+      "Happy birthday {name}! May this year bring you lots of joy.",
+      "Wishing you a very happy birthday, {name}!",
+    ],
+    warm: [
+      "Happy birthday {name}! Hope today's a good one",
+      "Happy birthday {name}! Hope you get properly spoiled today",
+      "Happiest birthday {name}! Have the best year",
+      "Happy birthday {name}! Let's celebrate soon",
+    ],
+    playful: [
+      "{name}!! Happy birthday. Another year older, same level of chaos",
+      "Happy birthday {name}! Hope today is all cake and zero adulting",
+      "HBD {name}! Treat when?",
+      "Happy birthday to my favourite menace, {name}!",
+    ],
+  },
+};
+// for "bring up next time" topics, which aren't events, so "how did X go" reads wrong
+const TOPIC_LIBRARY = {
+  respectful: ["Hi {name}, how are things with {about}?", "Hello {name}! Any update on {about}?", "Hi {name}, I was thinking about {about}. How is it going?"],
+  warm: ["Hey {name}! What's the latest with {about}?", "Hi {name}! How's {about} going?", "Hey {name}, any update on {about}?"],
+  playful: ["{name}! Update on {about}, please", "So what's happening with {about}, {name}?", "Okay {name}, spill. How's {about}?"],
+};
+function shuffleTake(arr, n) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+  return a.slice(0, n);
+}
+function situationStarters(p, situation, fu) {
+  const tone = MSG_LIBRARY[p.tone] ? p.tone : "warm";
+  if (situation === "followup") {
+    if (fu) {
+      const msgs = followupMessages(p, fu.about);
+      // asking before the day: "how did it go" would be the wrong tense, so lead with "any news"
+      return fu.date && fu.date > todayISO() && msgs.length === 3 ? [msgs[1], msgs[2], msgs[0]] : msgs;
+    }
+    const topics = (p.topics ?? []).slice(0, 3);
+    if (topics.length === 1) return TOPIC_LIBRARY[tone].map(s => s.replaceAll("{about}", youify(topics[0])));
+    if (topics.length) return topics.map((tp, i) => TOPIC_LIBRARY[tone][i % 3].replaceAll("{about}", youify(tp)));
+    return pickStarters(tone, 3);
+  }
+  if (situation === "mine") return [...(S.settings.savedMsgs ?? [])];
+  if (SITUATION_LIBRARY[situation]) return shuffleTake(SITUATION_LIBRARY[situation][tone], 3);
+  return pickStarters(tone, 3);
+}
+// a message you wrote for Priya becomes reusable for anyone: her name turns back into {name}
+const toSavedTemplate = (text, p) => String(text ?? "").trim().replace(new RegExp(`\\b${escRe(p.name.split(" ")[0])}\\b`, "gi"), "{name}");
+function birthdayNear(p) {
+  if (!p.birthday) return false;
+  const dd = daysUntil(nextBirthday(p));
+  return dd <= 7 || dd >= 358;
+}
+
+function msgModal(id, fuId, sit) {
   const p = S.people.find(x => x.id === id);
   if (!p || !hasWA(p)) return;
   const tone = p.tone || "warm";
-  // a due follow-up is the most relevant thing to say, so it leads unless asked otherwise
-  const fu = fuId === "none" ? null
-    : (fuId ? S.followups.find(f => f.id === fuId && !f.done) : null) ?? personFollowups(p.id).find(f => f.date <= todayISO()) ?? null;
-  const starters = fu ? followupMessages(p, fu.about) : pickStarters(tone, 3);
+  // what to lead with: what you asked for, then a birthday, then a due follow-up, then a plain check-in
+  let fu = fuId && fuId !== "none" ? S.followups.find(f => f.id === fuId && !f.done) ?? null : null;
+  const nb = p.birthday ? daysUntil(nextBirthday(p)) : null;
+  let situation = sit || (fu ? "followup" : nb !== null && nb <= 1 ? "birthday" : null);
+  if (!situation && fuId !== "none") { fu = personFollowups(p.id).find(f => f.date <= todayISO()) ?? null; if (fu) situation = "followup"; }
+  situation = situation || "checkin";
+  if (situation === "followup" && !fu && fuId !== "none") fu = personFollowups(p.id)[0] ?? null;
+  if (situation !== "followup") fu = null;
+  const starters = situationStarters(p, situation, fu);
+  const shown = SITUATIONS.filter(([k]) =>
+    k === "followup" ? (p.topics ?? []).length || personFollowups(p.id).length
+    : k === "birthday" ? birthdayNear(p)
+    : true);
+  const sitLabel = (SITUATIONS.find(([k]) => k === situation) ?? SITUATIONS[0])[1];
   const note = lastNote(p);
   const first = esc(p.name.split(" ")[0]);
   const topics = p.topics ?? [];
+  const starterHtml = situation === "mine"
+    ? (starters.length
+        ? starters.map((s, i) => `<div class="mine-row"><button type="button" class="starter" data-fill="${esc(fillTemplate(s, p))}">${esc(fillTemplate(s, p))}</button><button type="button" class="btn ghost sm" data-act="mine-del" data-id="${id}" data-i="${i}" aria-label="Remove from Mine">✕</button></div>`).join("")
+        : `<div class="mine-empty">Messages you save show up here in your own words. Write one below and tap ⭐ Save. The person's name swaps in automatically.</div>`)
+    : starters.map(s => `<button type="button" class="starter" data-fill="${esc(fillTemplate(s, p))}">${esc(fillTemplate(s, p))}</button>`).join("");
+  const firstText = starters.length ? fillTemplate(starters[0], p) : "";
   openModal(`
     <h2 class="serif">Message ${first}</h2>
-    ${fu ? `<div class="msg-note fu-note">⏰ You wanted to ${fu.about ? `ask about <b>${esc(fu.about)}</b>` : "<b>check in</b>"}${fu.date < todayISO() ? ` (since ${fmtNice(fu.date).toLowerCase()})` : ""}. <button type="button" class="linkish" data-act="msg-general" data-id="${id}">General message instead</button></div>`
+    ${fu ? `<div class="msg-note fu-note">⏰ You wanted to ${fu.about ? `ask about <b>${esc(fu.about)}</b>` : "<b>check in</b>"}${fu.date < todayISO() ? ` (since ${fmtNice(fu.date).toLowerCase()})` : fu.date > todayISO() ? ` (set for ${fmtNice(fu.date).toLowerCase()})` : ""}. <button type="button" class="linkish" data-act="msg-general" data-id="${id}">General message instead</button></div>`
       : note ? `<div class="msg-note">📝 Last time you talked about <b>${esc(note.note)}</b> — maybe pick that back up?</div>` : ""}
     <div class="field"><label>Bring up with ${first}</label>
       <div class="topic-list">
@@ -890,24 +1081,27 @@ function msgModal(id, fuId) {
       </div>
       <form id="topicAddForm" data-id="${id}" class="topic-add"><input name="topic" placeholder="+ Something to talk about — press Enter" autocomplete="off" maxlength="120"></form>
     </div>
-    <div class="field"><label>${fu ? "Follow-up" : esc(toneLabel(tone))} starters — tap one, then make it yours</label>
-      <div class="starter-list">
-        ${starters.map(s => `<button type="button" class="starter" data-fill="${esc(fillTemplate(s, p))}">${esc(fillTemplate(s, p))}</button>`).join("")}
+    <div class="field"><label>What's this about?</label>
+      <div class="sit-row" role="tablist">
+        ${shown.map(([k, l]) => `<button type="button" role="tab" aria-selected="${k === situation}" class="${k === situation ? "on" : ""}" data-act="msg-sit" data-id="${id}" data-sit="${k}">${l}</button>`).join("")}
       </div>
+    </div>
+    <div class="field"><label>${esc(sitLabel)}${situation === "mine" ? "" : ` · ${esc(toneLabel(tone))}`} — tap one, then make it yours</label>
+      <div class="starter-list">${starterHtml}</div>
       <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;margin-top:8px">
-        ${fu ? "" : `<button type="button" class="btn ghost sm" data-act="msg-shuffle" data-id="${id}">🎲 Other options</button>`}
+        ${fu || situation === "mine" || (situation === "followup" && topics.length) ? "" : `<button type="button" class="btn ghost sm" data-act="msg-shuffle" data-id="${id}" data-sit="${situation}">🎲 Other options</button>`}
         <button type="button" class="btn ghost sm" data-act="fu-new" data-id="${id}">⏰ Follow up later</button>
         <button type="button" class="btn ghost sm" data-act="edit-person" data-id="${id}">Change tone</button>
       </div>
     </div>
     <form id="msgForm" data-id="${id}" data-fu="${fu?.id ?? ""}">
-      <div class="field"><label>Your message</label>
-        <textarea name="text" rows="3" placeholder="Write your own, or tap a starter above…">${esc(fillTemplate(starters[0], p))}</textarea>
+      <div class="field"><label style="display:flex;justify-content:space-between;align-items:baseline">Your message <button type="button" class="linkish" data-act="msg-save" data-id="${id}">⭐ Save as mine</button></label>
+        <textarea name="text" rows="3" placeholder="Write your own, or tap a starter above…">${esc(firstText)}</textarea>
         <div class="hint">Nothing sends automatically — WhatsApp opens with this ready, you press send.</div></div>
       <div class="alt-channels">
         <span style="font-size:12.5px;color:var(--muted)">Or reach ${first} by</span>
         <a class="btn sm" href="tel:+${(p.phone ?? "").replace(/\D/g, "")}" data-act="alt-reach" data-id="${id}">📞 Call</a>
-        <a class="btn sm" href="sms:+${(p.phone ?? "").replace(/\D/g, "")}?body=${encodeURIComponent(fillTemplate(starters[0], p))}" data-act="alt-reach" data-id="${id}">💬 SMS</a>
+        <a class="btn sm" href="sms:+${(p.phone ?? "").replace(/\D/g, "")}?body=${encodeURIComponent(firstText)}" data-act="alt-reach" data-id="${id}">💬 SMS</a>
       </div>
       <div class="modal-actions">
         <button type="button" class="btn left" data-act="msg-blank" data-id="${id}">Open chat blank</button>
@@ -915,6 +1109,9 @@ function msgModal(id, fuId) {
         <button type="submit" class="btn wa">Open WhatsApp →</button>
       </div>
     </form>`);
+  // keep the chosen situation's chip in view on narrow screens
+  const row = $(".sit-row"), on = row?.querySelector(".on");
+  if (row && on) row.scrollLeft = Math.max(0, on.offsetLeft - row.offsetLeft - (row.clientWidth - on.offsetWidth) / 2);
 }
 
 /* ---------- urgency & alert digest ---------- */
@@ -2232,8 +2429,25 @@ document.addEventListener("click", e => {
     case "history": historyModal(S.people.find(p => p.id === id)); break;
     case "log": e.stopPropagation(); logTouch(id); break;
     case "msg": e.stopPropagation(); msgModal(id); break;
-    case "msg-shuffle": msgModal(id, "none"); break;
+    case "msg-shuffle": msgModal(id, "none", el.dataset.sit || "checkin"); break;
     case "msg-general": msgModal(id, "none"); break;
+    case "msg-sit": msgModal(id, el.dataset.sit === "followup" ? undefined : "none", el.dataset.sit); break;
+    case "msg-save": {
+      const p = S.people.find(x => x.id === id);
+      const raw = ($("#msgForm textarea")?.value ?? "").trim();
+      if (!p || !raw) { toast("Write something first, then save it"); break; }
+      const tpl = toSavedTemplate(raw, p);
+      S.settings.savedMsgs = [tpl, ...(S.settings.savedMsgs ?? []).filter(s => s !== tpl)].slice(0, 12);
+      save();
+      toast("Saved to ⭐ Mine. It'll use each person's own name.");
+      break;
+    }
+    case "mine-del": {
+      const i = Number(el.dataset.i);
+      if (S.settings.savedMsgs?.[i] !== undefined) { S.settings.savedMsgs.splice(i, 1); save(); }
+      msgModal(id, "none", "mine");
+      break;
+    }
     case "fu-new": e.stopPropagation(); $("#toast").classList.remove("show"); followupModal(id); break;
     case "fu-edit": {
       e.stopPropagation();
@@ -2923,7 +3137,7 @@ async function registerPeriodicSync() {
     }
   } catch (e) { /* best-effort — needs installed PWA + engagement */ }
 }
-const APP_VERSION = "v20";
+const APP_VERSION = "v21";
 if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
   navigator.serviceWorker.register("sw.js").then(() => {
     if (Notification.permission === "granted") registerPeriodicSync();
@@ -3021,7 +3235,7 @@ if (_q.has("selftest")) setTimeout(() => {
   // follow-ups
   ok("youify her->your", youify("her job interview") === "your job interview" && youify("Appa's checkup") === "Appa's checkup");
   ok("followup msg warm", followupMessages({ name: "Priya Rao", tone: "warm" }, "her job interview")[0] === "Hey Priya! How did your job interview go?");
-  ok("followup msg respectful", followupMessages({ name: "Amma", tone: "respectful" }, "Appa's checkup")[1] === "Hello Amma! Just wanted to ask how Appa's checkup went.");
+  ok("followup msg respectful", followupMessages({ name: "Amma", tone: "respectful" }, "Appa's checkup")[1] === "Hello Amma! Any news on Appa's checkup?");
   ok("followup generic when blank", followupMessages({ name: "Rohan", tone: "playful" }, "")[0] === "Rohan! Checking in. What's new?");
   ok("followup unknown tone falls back", followupMessages({ name: "X", tone: "zzz" }, "the trip").length === 3);
   ok("followup templates no em-dash", ![...Object.values(FOLLOWUP_LIBRARY).flat(), ...Object.values(GENERIC_FOLLOWUP)].some(s => /[–—]/.test(s)));
@@ -3045,6 +3259,24 @@ if (_q.has("selftest")) setTimeout(() => {
   ok("fuTitle", fuTitle({ about: "the trip" }, fuTmp) === "Ask Zara about the trip" && fuTitle({ about: "" }, fuTmp) === "Check in with Zara");
   S.followups = fuSaved;
   S.people = S.people.filter(p => p.id !== "fu-test-person");
+  // responses by situation
+  const allSit = Object.values(SITUATION_LIBRARY).flatMap(s => Object.values(s).flat()).concat(Object.values(TOPIC_LIBRARY).flat());
+  ok("situation lines: 4 per tone per situation", Object.values(SITUATION_LIBRARY).every(s => ["respectful", "warm", "playful"].every(t => s[t]?.length === 4)));
+  ok("situation lines all use {name}, no dashes", allSit.every(s => s.includes("{name}") && !/[–—]/.test(s)));
+  ok("every situation has a label", Object.keys(SITUATION_LIBRARY).every(k => SITUATIONS.some(([s]) => s === k)));
+  const sp = { name: "Rohan Mehta", tone: "playful", topics: ["his new apartment", "the Goa trip plan"] };
+  const plan3 = situationStarters(sp, "plan");
+  ok("plan: 3 distinct from the playful set", plan3.length === 3 && new Set(plan3).size === 3 && plan3.every(s => SITUATION_LIBRARY.plan.playful.includes(s)));
+  const topicLines = situationStarters(sp, "followup", null).map(s => fillTemplate(s, sp));
+  ok("follow up from topics: one per topic, youified", topicLines.length === 2 && topicLines[0] === "Rohan! Update on your new apartment, please" && topicLines[1].includes("the Goa trip plan"));
+  ok("due follow-up leads with how-did-it-go", situationStarters(sp, "followup", { about: "the trek", date: todayISO() })[0] === "Okay Rohan, how did the trek go? Tell me everything");
+  ok("early follow-up leads with any-news, not past tense", situationStarters(sp, "followup", { about: "the trek", date: addDays(todayISO(), 3) })[0] === "Rohan!! Update on the trek. Now.");
+  ok("unknown tone falls back to warm", situationStarters({ name: "X", tone: "zzz" }, "thanks").every(s => SITUATION_LIBRARY.thanks.warm.includes(s)));
+  ok("save-as-mine swaps the name back", toSavedTemplate("Hey Rohan, rohan's treat?", sp) === "Hey {name}, {name}'s treat?" && toSavedTemplate("Hi Priyanka", { name: "Priya" }) === "Hi Priyanka");
+  const savedBefore = S.settings.savedMsgs;
+  S.settings.savedMsgs = ["Yo {name}"];
+  ok("mine lists saved messages", situationStarters(sp, "mine").join() === "Yo {name}" && fillTemplate("Yo {name}", sp) === "Yo Rohan");
+  S.settings.savedMsgs = savedBefore;
   ok("age turns 30", birthdayAge({ birthday: `${todayDate().getFullYear() - 30}-12-31` }) === 30);
   const d = document.createElement("div"); d.id = "selftest"; d.style.display = "none";
   d.textContent = t.join(" | ");
