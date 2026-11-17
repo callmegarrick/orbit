@@ -45,6 +45,11 @@ Priorities: lower friction to act · make the daily 10-second check-in stick · 
 
 - [x] **Notes tab** (2026-07-25, Garrick's request): standalone notes — a place to jot/keep anything not tied to a person (ideas, lists, gift thoughts). Card grid, optional title + body, pin-to-top, edit, delete-with-undo, newest-first. Its own tab, accessible even before any people are added. (Caught + fixed a real bug: notes store full ISO timestamps; fmtNice needs date-only — sliced to YYYY-MM-DD.) SW v18. Selftest 44.
 
+## Check-up loop (started 2026-11-17 — "responses I can send + better tracking and checking up on people")
+- [x] Iteration 1: **Follow-ups.** Dated "check back in about X" per person (`S.followups`). Three ways in: typed capture (`ask Priya about the interview friday`, `check in with Amma about Appa's checkup tomorrow` — FOLLOWUP_CUE + parseCapture), the message picker's "⏰ Follow up later", and "⏰ later" on the log-a-touch toast. On the day: a "Right now" row (Ask / ✓), or folded into the person's focus card if they're already showing; also week + month views (gold), Focus mode (done / tomorrow), the in-app digest, the SW alert mirror, and the 9:00 Windows toast. Opening WhatsApp for that person pre-writes the question in their tone, and flips "her interview" to "your interview" (youify). "✓ Asked" marks it done and logs a touch noted "asked about X", undoable. Person editor recap lists upcoming follow-ups. Also fixed the two Hearth loose ends: theme-color meta and confetti colours. SW v20. Selftest 57.
+- [ ] Iteration 2: **Responses by situation** — check in · follow up · make a plan · congrats · tough time · sorry for the late reply · thanks, in each person's tone.
+- [ ] Iteration 3: **Better tracking** — how you connected (call / text / met), per-person timeline with gaps, who's drifting.
+
 ## Boundary-pushing loop (started 2026-07-11)
 See [IDEAS.md](IDEAS.md) — brainstorm ledger with verdicts. Iteration 1 shipped `orbit-notify.ps1` + `setup-morning-toast.bat`: native Windows toasts with real names, browser fully closed.
 

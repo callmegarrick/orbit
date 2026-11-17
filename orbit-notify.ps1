@@ -157,6 +157,25 @@ try {
     }
 } catch {}
 
+# follow-ups due today or earlier go first: they are the most specific nudge
+try {
+    $fuLines = @()
+    foreach ($fu in @($data.followups)) {
+        if ($null -eq $fu -or $fu.done -or -not $fu.date) { continue }
+        try {
+            $fdate = [datetime]::ParseExact($fu.date, "yyyy-MM-dd", $null)
+            if ($fdate -le $today) {
+                $who = @($data.people) | Where-Object { $_.id -eq $fu.personId } | Select-Object -First 1
+                if ($who) {
+                    $first = ($who.name -split " ")[0]
+                    if ($fu.about) { $fuLines += "Ask $first about $($fu.about)" } else { $fuLines += "Check in with $first" }
+                }
+            }
+        } catch {}
+    }
+    $occs = @($fuLines) + @($occs)
+} catch {}
+
 if (-not $overdue -and -not $bdays -and -not $occs) {
     Write-Host "ALL CLEAR - no toast needed"
     exit 0

@@ -1,5 +1,5 @@
 /* Kith service worker — offline shell + best-effort daily background check */
-const VERSION = "orbit-v19";
+const VERSION = "orbit-v20";
 const SHELL = ["./", "./index.html", "./manifest.json", "./icon.svg", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", e => {

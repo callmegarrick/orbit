@@ -7,8 +7,8 @@
 <meta name="description" content="A personal tracker for staying close to the people who matter.">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
-<meta name="theme-color" content="#f9f9f7" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#0d0d0d" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#eee7db" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#17120f" media="(prefers-color-scheme: dark)">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=DM+Serif+Display&display=swap" rel="stylesheet">
@@ -167,6 +167,11 @@ section.block { margin-bottom: 28px; }
 .topic-add input { width: 100%; font: inherit; font-size: 13.5px; color: var(--ink); background: var(--page); border: 1px solid var(--border); border-radius: 9px; padding: 8px 11px; outline: none; }
 .topic-add input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .focus-topics { font-size: 12.5px; color: color-mix(in srgb, var(--magenta) 70%, var(--ink)); margin-top: 3px; }
+.focus-fu { font-size: 12.5px; color: color-mix(in srgb, var(--gold) 55%, var(--ink)); margin-top: 3px; font-weight: 600; }
+.fu-note { background: color-mix(in srgb, var(--gold) 14%, var(--surface)); }
+.recap-fu { cursor: pointer; color: color-mix(in srgb, var(--gold) 50%, var(--ink)); }
+.recap-fu:hover { text-decoration: underline; text-underline-offset: 2px; }
+.linkish { background: none; border: none; padding: 0; font: inherit; font-size: 12.5px; color: var(--accent); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; margin-left: 4px; }
 .alt-channels { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: -4px 0 4px; }
 
 /* ---------- my day todos ---------- */
@@ -406,7 +411,7 @@ section.block { margin-bottom: 28px; }
   position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px);
   background: var(--ink); color: var(--page); padding: 11px 18px; border-radius: 12px;
   font-size: 14px; font-weight: 500; box-shadow: var(--shadow-lift);
-  transition: transform 0.25s ease; z-index: 100; display: flex; gap: 14px; align-items: center;
+  transition: transform 0.25s ease; z-index: 100; display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; justify-content: center;
   max-width: calc(100vw - 40px);
 }
 #toast.show { transform: translateX(-50%) translateY(0); }
@@ -499,6 +504,7 @@ const DEFAULTS = {
   plans: [],
   todos: [],
   notes: [],
+  followups: [],
   occasions: BUILTIN_OCCASIONS.map(o => ({ ...o, enabled: true, done: {} })),
   settings: { birthdayLead: 7, occasionLead: 3, lastNotified: {} },
 };
@@ -516,6 +522,8 @@ function load() {
     data.settings = Object.assign({ birthdayLead: 7, occasionLead: 3, lastNotified: {} }, data.settings);
     data.plans = data.plans ?? [];
     data.notes = data.notes ?? [];
+    // done follow-ups are kept a month (the timeline shows them), open ones stay until done
+    data.followups = (data.followups ?? []).filter(f => !f.done || !f.doneAt || daysSince(f.doneAt) <= 30);
     // done to-dos fade out after a week; undone ones carry forward forever
     data.todos = (data.todos ?? []).filter(td => !td.done || !td.doneAt || daysSince(td.doneAt) <= 7);
     return data;
@@ -747,6 +755,108 @@ function parseCapture(raw) {
   }
   return { text, date, personId };
 }
+
+/* ---------- follow-ups: check back in on something they told you ---------- */
+const escRe = s => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const FOLLOWUP_LIBRARY = {
+  respectful: [
+    "Hi {name}, how did {about} go? Hope it went well.",
+    "Hello {name}! Just wanted to ask how {about} went.",
+    "Hi {name}, I was thinking about {about}. How are things?",
+  ],
+  warm: [
+    "Hey {name}! How did {about} go?",
+    "Hi {name}! Any news on {about}?",
+    "Hey {name}, been thinking about {about}. How did it go?",
+  ],
+  playful: [
+    "{name}!! Update on {about}. Now.",
+    "Okay {name}, how did {about} go? Tell me everything",
+    "So?? How did {about} go, {name}?",
+  ],
+};
+const GENERIC_FOLLOWUP = {
+  respectful: "Hi {name}, just checking in. How have things been since we last spoke?",
+  warm: "Hey {name}! Checking in, how have things been?",
+  playful: "{name}! Checking in. What's new?",
+};
+// you write "her interview" in your notes; the message to her should say "your interview"
+const youify = about => String(about ?? "").trim().replace(/^(her|his|their)\b/i, "your");
+function followupMessages(p, about) {
+  const tone = FOLLOWUP_LIBRARY[p.tone] ? p.tone : "warm";
+  const first = p.name.split(" ")[0];
+  const a = youify(about);
+  const lib = a ? FOLLOWUP_LIBRARY[tone] : [GENERIC_FOLLOWUP[tone]];
+  return lib.map(s => s.replaceAll("{name}", first).replaceAll("{about}", a));
+}
+const fuTitle = (fu, p) => fu.about ? `Ask ${p.name.split(" ")[0]} about ${fu.about}` : `Check in with ${p.name.split(" ")[0]}`;
+function dueFollowups(today) {
+  return S.followups.filter(f => !f.done && f.date <= today && S.people.some(p => p.id === f.personId))
+    .sort((a, b) => (a.date > b.date ? 1 : a.date < b.date ? -1 : 0));
+}
+const personFollowups = pid => S.followups.filter(f => !f.done && f.personId === pid).sort((a, b) => (a.date > b.date ? 1 : -1));
+// "ask Priya about the interview friday" becomes a follow-up instead of a to-do
+const FOLLOWUP_CUE = /^(?:ask|check in with|check up on|check on|follow up with|follow up on)\s+/i;
+function parseFollowupCapture(raw) {
+  const cap = parseCapture(raw);
+  if (!cap.personId || !FOLLOWUP_CUE.test(cap.text)) return null;
+  const p = S.people.find(x => x.id === cap.personId);
+  let about = cap.text.replace(FOLLOWUP_CUE, "").replace(new RegExp(`\\b${escRe(p.name.split(" ")[0])}\\b`, "i"), "").trim();
+  about = about.replace(/^(?:about|on|how)\s+/i, "").replace(/\s+(?:went|goes|is going|is)$/i, "").replace(/[?.!,;]+$/, "").trim();
+  return { personId: cap.personId, about, date: cap.date };
+}
+function addFollowup(personId, about, date) {
+  const fu = { id: uid(), personId, about: String(about ?? "").trim(), date, createdAt: new Date().toISOString(), done: false };
+  S.followups.push(fu);
+  return fu;
+}
+function completeFollowup(fuId, viaFocus) {
+  const fu = S.followups.find(f => f.id === fuId);
+  if (!fu) return;
+  fu.done = true; fu.doneAt = todayISO();
+  const p = S.people.find(x => x.id === fu.personId);
+  if (!p) { save(); render(); return; }
+  const note = fu.about ? `asked about ${fu.about}` : "checked in";
+  if (viaFocus) { p.interactions = p.interactions ?? []; p.interactions.push({ date: todayISO(), note }); p.snoozedUntil = null; save(); return; }
+  logTouchOn(p.id, todayISO(), note);
+  const prev = undoFn;
+  undoFn = () => { fu.done = false; delete fu.doneAt; prev && prev(); };
+}
+function followupModal(pid, fu) {
+  const p = S.people.find(x => x.id === pid);
+  if (!p) return;
+  const isNew = !fu;
+  const first = esc(p.name.split(" ")[0]);
+  const date = fu?.date ?? addDays(todayISO(), 3);
+  openModal(`
+    <h2 class="serif">${isNew ? `Check back in with ${first}` : esc(fuTitle(fu, p))}</h2>
+    <p style="font-size:13.5px;color:var(--ink-2);margin:-6px 0 14px">Something they told you about? Kith brings it back on the day, with the message already written.</p>
+    <form id="followupForm" data-pid="${p.id}" data-id="${fu?.id ?? ""}">
+      <div class="field"><label>Ask ${first} about</label>
+        <input name="about" value="${esc(fu?.about ?? "")}" placeholder="the interview · your exam · the Goa trip" maxlength="80" autocomplete="off">
+        <div class="hint">Write it the way you'd say it to them. Leave it blank for a general check-in.</div></div>
+      <div class="field"><label>When</label>
+        <div class="seg" id="fuWhen">
+          <button type="button" data-days="1">Tomorrow</button>
+          <button type="button" data-days="3" class="${isNew ? "on" : ""}">In 3 days</button>
+          <button type="button" data-days="7">Next week</button>
+        </div>
+        <input type="date" name="date" value="${date}" min="${todayISO()}" style="margin-top:8px"></div>
+      <div class="modal-actions">
+        ${!isNew ? `<button type="button" class="btn danger left" data-act="fu-del" data-id="${fu.id}">Delete</button>` : ""}
+        <button type="button" class="btn" data-act="close">Cancel</button>
+        <button type="submit" class="btn primary">${isNew ? "Set follow-up" : "Save"}</button>
+      </div>
+    </form>`);
+}
+function offerAsked(p, fu) {
+  const t = $("#toast");
+  undoFn = null;
+  t.innerHTML = `Opened WhatsApp for ${esc(p.name.split(" ")[0])} <button data-act="fu-done" data-id="${fu.id}">✓ Asked</button>`;
+  t.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove("show"), 8000);
+}
 function offerLog(p) {
   const t = $("#toast");
   undoFn = null;
@@ -759,33 +869,38 @@ function openWA(p, text) {
   const digits = (p.phone ?? "").replace(/\D/g, "");
   window.open(`https://wa.me/${digits}${text ? `?text=${encodeURIComponent(text)}` : ""}`, "_blank", "noopener");
 }
-function msgModal(id) {
+function msgModal(id, fuId) {
   const p = S.people.find(x => x.id === id);
   if (!p || !hasWA(p)) return;
   const tone = p.tone || "warm";
-  const starters = pickStarters(tone, 3);
+  // a due follow-up is the most relevant thing to say, so it leads unless asked otherwise
+  const fu = fuId === "none" ? null
+    : (fuId ? S.followups.find(f => f.id === fuId && !f.done) : null) ?? personFollowups(p.id).find(f => f.date <= todayISO()) ?? null;
+  const starters = fu ? followupMessages(p, fu.about) : pickStarters(tone, 3);
   const note = lastNote(p);
   const first = esc(p.name.split(" ")[0]);
   const topics = p.topics ?? [];
   openModal(`
     <h2 class="serif">Message ${first}</h2>
-    ${note ? `<div class="msg-note">📝 Last time you talked about <b>${esc(note.note)}</b> — maybe pick that back up?</div>` : ""}
+    ${fu ? `<div class="msg-note fu-note">⏰ You wanted to ${fu.about ? `ask about <b>${esc(fu.about)}</b>` : "<b>check in</b>"}${fu.date < todayISO() ? ` (since ${fmtNice(fu.date).toLowerCase()})` : ""}. <button type="button" class="linkish" data-act="msg-general" data-id="${id}">General message instead</button></div>`
+      : note ? `<div class="msg-note">📝 Last time you talked about <b>${esc(note.note)}</b> — maybe pick that back up?</div>` : ""}
     <div class="field"><label>Bring up with ${first}</label>
       <div class="topic-list">
         ${topics.map((tp, i) => `<span class="topic-chip">${esc(tp)}<button type="button" data-act="topic-del" data-id="${id}" data-i="${i}" aria-label="Remove">✕</button></span>`).join("")}
       </div>
       <form id="topicAddForm" data-id="${id}" class="topic-add"><input name="topic" placeholder="+ Something to talk about — press Enter" autocomplete="off" maxlength="120"></form>
     </div>
-    <div class="field"><label>${esc(toneLabel(tone))} starters — tap one, then make it yours</label>
+    <div class="field"><label>${fu ? "Follow-up" : esc(toneLabel(tone))} starters — tap one, then make it yours</label>
       <div class="starter-list">
         ${starters.map(s => `<button type="button" class="starter" data-fill="${esc(fillTemplate(s, p))}">${esc(fillTemplate(s, p))}</button>`).join("")}
       </div>
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
-        <button type="button" class="btn ghost sm" data-act="msg-shuffle" data-id="${id}">🎲 Other options</button>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;margin-top:8px">
+        ${fu ? "" : `<button type="button" class="btn ghost sm" data-act="msg-shuffle" data-id="${id}">🎲 Other options</button>`}
+        <button type="button" class="btn ghost sm" data-act="fu-new" data-id="${id}">⏰ Follow up later</button>
         <button type="button" class="btn ghost sm" data-act="edit-person" data-id="${id}">Change tone</button>
       </div>
     </div>
-    <form id="msgForm" data-id="${id}">
+    <form id="msgForm" data-id="${id}" data-fu="${fu?.id ?? ""}">
       <div class="field"><label>Your message</label>
         <textarea name="text" rows="3" placeholder="Write your own, or tap a starter above…">${esc(fillTemplate(starters[0], p))}</textarea>
         <div class="hint">Nothing sends automatically — WhatsApp opens with this ready, you press send.</div></div>
@@ -1001,7 +1116,7 @@ function renderToday() {
     return `<div class="focus-card card">
       <div class="focus-top">${avatarRing(p, st)}
         <div class="info"><div class="name">${esc(p.name)}</div>
-        <div class="why ${st.status === "late" ? "overdue" : ""}">${why}</div>${noteLine(p)}${(p.topics ?? []).length ? `<div class="focus-topics">💬 bring up: ${esc((p.topics ?? []).join(", "))}</div>` : ""}</div>
+        <div class="why ${st.status === "late" ? "overdue" : ""}">${why}</div>${noteLine(p)}${(p.topics ?? []).length ? `<div class="focus-topics">💬 bring up: ${esc((p.topics ?? []).join(", "))}</div>` : ""}${(() => { const f = personFollowups(p.id).find(x => x.date <= todayISO()); return f ? `<div class="focus-fu">⏰ ${f.about ? `ask about ${esc(f.about)}` : "check in"}</div>` : ""; })()}</div>
       </div>
       <div class="focus-actions">
         ${hasWA(p) ? `<button class="btn wa grow" data-act="msg" data-id="${p.id}">💬 WhatsApp</button>`
@@ -1013,8 +1128,23 @@ function renderToday() {
     </div>`;
   };
 
+  const fuRow = fu => {
+    const p = S.people.find(x => x.id === fu.personId);
+    return `<div class="row" data-act="fu-edit" data-id="${fu.id}">
+      <div style="font-size:22px;width:40px;text-align:center">⏰</div>
+      <div class="info"><div class="name">${esc(fuTitle(fu, p))}</div>
+      <div class="sub">${fu.date === todayISO() ? "Today" : `<span style="color:var(--critical);font-weight:500">since ${fmtNice(fu.date).toLowerCase()}</span>`}</div></div>
+      <div class="side">
+        ${hasWA(p) ? `<button class="btn wa sm" data-act="fu-msg" data-id="${fu.id}">💬 Ask</button>` : ""}
+        <button class="btn sm" data-act="fu-done" data-id="${fu.id}" title="Done">✓</button>
+      </div>
+    </div>`;
+  };
+
   // score the non-person items; people keep their focus-card treatment
   const pool = [];
+  const inFocus = new Set(focus.map(x => x.p.id));
+  for (const fu of dueFollowups(todayISO()).filter(f => !inFocus.has(f.personId))) pool.push({ score: 2.2 + Math.min(1, daysSince(fu.date) * 0.1), kind: "followup", id: fu.id, html: fuRow(fu) });
   for (const x of occs.filter(x => x.dd <= 1)) pool.push({ score: 4 - x.dd, kind: "occ", id: x.o.id, html: occRow(x) });
   for (const x of allPlans.filter(x => x.dd <= 0)) pool.push({ score: 2.5 + Math.min(1, -x.dd * 0.1), kind: "plan", id: x.pl.id, html: planRow(x) });
   for (const x of allPlans.filter(x => x.dd === 1)) pool.push({ score: 0.8, kind: "plan", id: x.pl.id, html: planRow(x) });
@@ -1030,7 +1160,7 @@ function renderToday() {
   if (focus.length) html += `<div class="focus-grid" style="margin-bottom:14px">${focus.map(personCard).join("")}</div>`;
   if (nowItems.length) html += `<div class="rows card" style="padding:0 18px">${nowItems.map(x => x.html).join("")}</div>`;
   if (!focus.length && !nowItems.length) html += `<div class="card" style="padding:26px 24px;text-align:center"><div style="font-size:26px;margin-bottom:6px">✨</div><div style="font-weight:600">Clear.</div><div style="color:var(--ink-2);font-size:14px">${esc(pick(CLEAR_LINES))} Kith's watching the calendar.</div></div>`;
-  html += `<div class="card" style="margin-top:14px;padding:2px 18px 8px"><form id="todoAddForm" class="todo-add"><input name="text" placeholder="+ Add anything — 'call Amma tomorrow', 'shoes on friday'…" autocomplete="off" maxlength="200"></form></div>
+  html += `<div class="card" style="margin-top:14px;padding:2px 18px 8px"><form id="todoAddForm" class="todo-add"><input name="text" placeholder="+ Add anything — 'shoes on friday', 'ask Priya about the interview tuesday'…" autocomplete="off" maxlength="200"></form></div>
   </section>`;
 
   /* ---------- everything else, folded away by default ---------- */
@@ -1202,6 +1332,12 @@ function calendarItems(y, m) { // m: 0-11 → map isoDate -> items[]
     const pd = fromISO(d);
     if (pd >= monthStart && pd <= monthEnd) push(d, { kind: "todo", label: `☑️ ${td.text}`, id: td.id, act: "todo-toggle" });
   }
+  for (const fu of S.followups.filter(f => !f.done)) {
+    const p = S.people.find(x => x.id === fu.personId);
+    const d = fu.date < todayISO() ? todayISO() : fu.date;
+    const pd = fromISO(d);
+    if (p && pd >= monthStart && pd <= monthEnd) push(d, { kind: "followup", label: `⏰ ${fuTitle(fu, p)}`, id: fu.id, act: "fu-edit" });
+  }
   for (const o of S.occasions.filter(o => o.enabled)) {
     let ds = [];
     if (o.fixed) { const [fm, fd] = o.fixed.split("-").map(Number); if (fm === m + 1) ds = [iso(new Date(y, m, fd))]; }
@@ -1230,13 +1366,17 @@ function weekItems(days) {
   for (const t of S.tasks) { const st = taskState(t); push(st.dd < 0 ? todayISO() : st.due, { kind: "task", label: `${t.emoji || "🔁"} ${t.name}`, id: t.id, act: "edit-task" }); }
   for (const pl of S.plans.filter(pl => !pl.done)) { const person = pl.personId ? S.people.find(p => p.id === pl.personId) : null; push(pl.date, { kind: "plan", label: `📌 ${pl.title}${person ? ` · ${person.name.split(" ")[0]}` : ""}`, id: pl.id, act: "edit-plan" }); }
   for (const td of S.todos.filter(td => !td.done)) push(td.date ?? todayISO(), { kind: "todo", label: td.text, id: td.id, act: "todo-toggle" });
+  for (const fu of S.followups.filter(f => !f.done)) {
+    const p = S.people.find(x => x.id === fu.personId);
+    if (p) push(fu.date < todayISO() ? todayISO() : fu.date, { kind: "followup", label: `⏰ ${fuTitle(fu, p)}`, id: fu.id, act: "fu-edit" });
+  }
   for (const o of S.occasions.filter(o => o.enabled)) for (const d of days) {
     const match = o.fixed ? d.slice(5) === o.fixed : o.once ? o.once === d : Object.values(o.dates ?? {}).includes(d);
     if (match) push(d, { kind: "occ", label: `${o.emoji} ${o.name}`, id: o.id, act: "open-queue" });
   }
   return map;
 }
-const KIND_COLOR = { due: "var(--accent)", bday: "var(--violet)", occ: "var(--orange)", task: "var(--aqua)", plan: "var(--magenta)", todo: "var(--good)" };
+const KIND_COLOR = { due: "var(--accent)", bday: "var(--violet)", occ: "var(--orange)", task: "var(--aqua)", plan: "var(--magenta)", todo: "var(--good)", followup: "var(--gold)" };
 function calModeToggle() {
   return `<div class="seg" style="margin-bottom:14px">
     <button data-act="cal-mode" data-mode="week" class="${calMode === "week" ? "on" : ""}">Week</button>
@@ -1282,6 +1422,7 @@ function renderWeek() {
       <span><i style="background:var(--violet)"></i>Birthday</span>
       <span><i style="background:var(--orange)"></i>Occasion</span>
       <span><i style="background:var(--aqua)"></i>Routine</span>
+      <span><i style="background:var(--gold)"></i>Follow-up</span>
     </div>`;
 }
 function renderCalendar() {
@@ -1327,6 +1468,7 @@ function renderCalendar() {
       <span><i style="background:var(--violet)"></i>Birthday</span>
       <span><i style="background:var(--orange)"></i>Occasion</span>
       <span><i style="background:var(--aqua)"></i>Routine</span>
+      <span><i style="background:var(--gold)"></i>Follow-up</span>
       <span><i style="background:var(--magenta)"></i>Plan</span>
     </div>${panel}`;
 }
@@ -1460,9 +1602,11 @@ function personModal(p) {
   p = p ?? { name: "", phone: "", cadence: 30, birthday: "", notes: "", circle: "" };
   const moments = [...(p.interactions ?? [])].filter(i => i.note)
     .sort((a, b) => (b.date < a.date ? -1 : 1)).slice(0, 3);
-  const recap = !isNew && (moments.length || p.circle) ? `
+  const fus = isNew ? [] : personFollowups(p.id);
+  const recap = !isNew && (moments.length || p.circle || fus.length) ? `
     <div style="background:var(--page);border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:13.5px;line-height:1.6">
-      ${p.circle ? `<div${moments.length ? ` style="margin-bottom:6px"` : ""}>👨‍👩‍👧 ${esc(p.circle)}</div>` : ""}
+      ${p.circle ? `<div style="margin-bottom:6px">👨‍👩‍👧 ${esc(p.circle)}</div>` : ""}
+      ${fus.map(f => `<div class="recap-fu" data-act="fu-edit" data-id="${f.id}">⏰ <b>${fmtNice(f.date)}</b> — ${f.about ? `ask about ${esc(f.about)}` : "check in"}</div>`).join("")}
       ${moments.map(m => `<div style="color:var(--ink-2)">📝 <b style="color:var(--ink)">${fmtNice(m.date)}</b> — ${esc(m.note)}</div>`).join("")}
     </div>` : "";
   openModal(`
@@ -1850,6 +1994,12 @@ function focusItemData(item) {
     if (!o) return null;
     return { emoji: o.emoji, title: `${o.name} wishes`, sub: "open the wish queue", isOcc: true };
   }
+  if (item.kind === "followup") {
+    const fu = S.followups.find(x => x.id === item.id);
+    const p = fu && S.people.find(x => x.id === fu.personId);
+    if (!fu || fu.done || !p) return null;
+    return { emoji: "⏰", title: fuTitle(fu, p), sub: fu.date === todayISO() ? "due today" : `since ${fmtNice(fu.date).toLowerCase()}`, canMsg: hasWA(p), msgAct: "fu-msg" };
+  }
   return null;
 }
 function focusModal() {
@@ -1875,7 +2025,7 @@ function focusModal() {
       <p style="color:var(--ink-2);font-size:14px;margin-bottom:18px">${d.sub || ""}</p>
       <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
         ${d.isOcc ? `<button class="btn primary" data-act="focus-occ" data-id="${item.id}">Send wishes</button>`
-          : `${d.canMsg ? `<button class="btn wa" data-act="focus-msg" data-id="${item.id}">💬 Message</button>` : ""}
+          : `${d.canMsg ? `<button class="btn wa" data-act="${d.msgAct || "focus-msg"}" data-id="${item.id}">💬 Message</button>` : ""}
              <button class="btn primary" data-act="focus-done">✓ Done</button>
              ${item.kind !== "routine" ? `<button class="btn" data-act="focus-push">→ Tomorrow</button>` : ""}`}
         <button class="btn ghost" data-act="focus-skip">Skip</button>
@@ -1886,7 +2036,7 @@ function focusAdvance() { focusIdx++; focusModal(); }
 
 /* ---------- delight: confetti + celebration ---------- */
 const reducedMotion = () => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-const CELEBRATE_COLORS = ["#2a78d6", "#1baf7a", "#eda100", "#e34948", "#e87ba4", "#eb6834", "#4a3aa7"];
+const CELEBRATE_COLORS = ["#a23c5a", "#c79a3e", "#4f8a6b", "#b0603f", "#8a4f78", "#3f6f9e", "#e08aa4"];
 function celebrate(opts = {}) {
   if (reducedMotion()) return;
   const n = opts.big ? 100 : 46;
@@ -1979,7 +2129,7 @@ function logTouchOn(id, dateISO, note) {
   } else {
     if (isToday) celebrate();
     const cheer = isToday ? esc(pick(TOUCH_CHEERS).replaceAll("{n}", p.name.split(" ")[0])) : `Logged ${esc(p.name)} — ${fmtNice(dateISO).toLowerCase()} ✓`;
-    t.innerHTML = `${cheer} <button data-act="undo">Undo</button>${note ? "" : ` <button data-act="note-last" data-id="${p.id}">📝 note</button>`}`;
+    t.innerHTML = `${cheer} <button data-act="undo">Undo</button>${note ? "" : ` <button data-act="note-last" data-id="${p.id}">📝 note</button>`} <button data-act="fu-new" data-id="${p.id}">⏰ later</button>`;
   }
   t.classList.add("show");
   clearTimeout(toastTimer);
@@ -2055,6 +2205,10 @@ const SAMPLE = () => {
       { id: uid(), text: "Reply to the landlord", date: addDays(t, -1), createdAt: new Date(Date.now() - 864e5).toISOString(), done: false, sample: true },
       { id: uid(), text: "Pick up the parcel", date: addDays(t, 2), createdAt: new Date().toISOString(), done: false, sample: true },
     ],
+    followups: [
+      { id: uid(), personId: people[3].id, about: "her job interview", date: t, createdAt: new Date().toISOString(), done: false, sample: true },
+      { id: uid(), personId: people[2].id, about: "the new flat", date: addDays(t, 2), createdAt: new Date().toISOString(), done: false, sample: true },
+    ],
   };
 };
 
@@ -2078,7 +2232,34 @@ document.addEventListener("click", e => {
     case "history": historyModal(S.people.find(p => p.id === id)); break;
     case "log": e.stopPropagation(); logTouch(id); break;
     case "msg": e.stopPropagation(); msgModal(id); break;
-    case "msg-shuffle": msgModal(id); break;
+    case "msg-shuffle": msgModal(id, "none"); break;
+    case "msg-general": msgModal(id, "none"); break;
+    case "fu-new": e.stopPropagation(); $("#toast").classList.remove("show"); followupModal(id); break;
+    case "fu-edit": {
+      e.stopPropagation();
+      const fu = S.followups.find(x => x.id === id);
+      if (fu) followupModal(fu.personId, fu);
+      break;
+    }
+    case "fu-msg": {
+      e.stopPropagation();
+      const fu = S.followups.find(x => x.id === id);
+      if (fu) { closeModal(); msgModal(fu.personId, fu.id); }
+      break;
+    }
+    case "fu-done": {
+      e.stopPropagation();
+      $("#toast").classList.remove("show");
+      completeFollowup(id);
+      break;
+    }
+    case "fu-del": {
+      const fu = S.followups.find(x => x.id === id);
+      S.followups = S.followups.filter(x => x.id !== id);
+      save(); closeModal(); render();
+      if (fu) toast("Follow-up removed", () => { S.followups.push(fu); save(); render(); });
+      break;
+    }
     case "alt-reach": { const p = S.people.find(x => x.id === id); closeModal(); if (p) offerLog(p); break; }
     case "topic-del": {
       const p = S.people.find(x => x.id === id);
@@ -2131,6 +2312,7 @@ document.addEventListener("click", e => {
       const p = S.people.find(x => x.id === id);
       if (!confirm(`Remove ${p.name} and their history?`)) break;
       S.people = S.people.filter(x => x.id !== id);
+      S.followups = S.followups.filter(f => f.personId !== id);
       save(); closeModal(); render(); toast(`${p.name} removed`);
       break;
     }
@@ -2202,6 +2384,8 @@ document.addEventListener("click", e => {
       } else if (item.kind === "routine") {
         const t = S.tasks.find(x => x.id === item.id);
         if (t) t.lastDone = today;
+      } else if (item.kind === "followup") {
+        completeFollowup(item.id, true);
       }
       save(); focusAdvance();
       break;
@@ -2212,6 +2396,7 @@ document.addEventListener("click", e => {
       if (item.kind === "person") { const p = S.people.find(x => x.id === item.id); if (p) p.snoozedUntil = tmrw; }
       else if (item.kind === "todo") { const td = S.todos.find(x => x.id === item.id); if (td) td.date = tmrw; }
       else if (item.kind === "plan") { const pl = S.plans.find(x => x.id === item.id); if (pl) pl.date = tmrw; }
+      else if (item.kind === "followup") { const fu = S.followups.find(x => x.id === item.id); if (fu) fu.date = tmrw; }
       save(); focusAdvance();
       break;
     }
@@ -2326,7 +2511,7 @@ document.addEventListener("click", e => {
     case "day-add-plan": closeModal(); planModal(null, el.dataset.date); break;
     case "load-sample": {
       const s = SAMPLE();
-      S.people.push(...s.people); S.tasks.push(...s.tasks); S.plans.push(...s.plans); S.todos.push(...s.todos);
+      S.people.push(...s.people); S.tasks.push(...s.tasks); S.plans.push(...s.plans); S.todos.push(...s.todos); S.followups.push(...s.followups);
       save(); render(); toast("Example data loaded — remove it any time in Settings");
       break;
     }
@@ -2335,6 +2520,7 @@ document.addEventListener("click", e => {
       S.tasks = S.tasks.filter(t => !t.sample);
       S.plans = S.plans.filter(pl => !pl.sample);
       S.todos = S.todos.filter(td => !td.sample);
+      S.followups = S.followups.filter(f => !f.sample && S.people.some(p => p.id === f.personId));
       save(); render(); toast("Example data removed");
       break;
     }
@@ -2382,6 +2568,14 @@ document.addEventListener("click", e => {
 
 // cadence preset segment control
 document.addEventListener("click", e => {
+  const w = e.target.closest("#fuWhen button");
+  if (w) {
+    $$("#fuWhen button").forEach(x => x.classList.remove("on"));
+    w.classList.add("on");
+    const di = $("#followupForm input[name=date]");
+    if (di) di.value = addDays(todayISO(), Number(w.dataset.days));
+    return;
+  }
   const b = e.target.closest("#cadenceSeg button");
   if (!b) return;
   $$("#cadenceSeg button").forEach(x => x.classList.remove("on"));
@@ -2430,9 +2624,20 @@ document.addEventListener("submit", e => {
   } else if (f.id === "msgForm") {
     const p = S.people.find(x => x.id === f.dataset.id);
     const text = ($("#msgForm textarea")?.value ?? "").trim();
+    const fu = f.dataset.fu ? S.followups.find(x => x.id === f.dataset.fu && !x.done) : null;
     openWA(p, text);
     closeModal();
-    offerLog(p);
+    if (fu) offerAsked(p, fu); else offerLog(p);
+  } else if (f.id === "followupForm") {
+    const pid = f.dataset.pid, id = f.dataset.id;
+    const about = (fd.get("about") ?? "").trim();
+    let date = fd.get("date") || addDays(todayISO(), 3);
+    if (date < todayISO()) date = todayISO();
+    const p = S.people.find(x => x.id === pid);
+    if (id) Object.assign(S.followups.find(x => x.id === id) ?? {}, { about, date });
+    else addFollowup(pid, about, date);
+    save(); closeModal(); render();
+    if (p) toast(`⏰ ${about ? `Ask ${p.name.split(" ")[0]} about ${about}` : `Check in with ${p.name.split(" ")[0]}`}: ${fmtNice(date).toLowerCase()}`);
   } else if (f.id === "noteForm") {
     const id = f.dataset.id;
     const data = { title: (fd.get("title") ?? "").trim(), body: (fd.get("body") ?? "").trim(), pinned: !!fd.get("pinned"), updatedAt: new Date().toISOString() };
@@ -2451,6 +2656,15 @@ document.addEventListener("submit", e => {
   } else if (f.id === "todoAddForm") {
     const raw = (fd.get("text") ?? "").trim();
     if (!raw) return;
+    const fcap = parseFollowupCapture(raw);
+    if (fcap) {
+      const fu = addFollowup(fcap.personId, fcap.about, fcap.date);
+      save(); render();
+      const p = S.people.find(x => x.id === fu.personId);
+      toast(`⏰ ${fuTitle(fu, p)}: ${fmtNice(fu.date).toLowerCase()}`, () => { S.followups = S.followups.filter(x => x.id !== fu.id); save(); render(); });
+      setTimeout(() => { const inp = $("#todoAddForm input"); if (inp) inp.focus(); }, 30);
+      return;
+    }
     const cap = parseCapture(raw);
     if (!cap.text) return;
     S.todos.push({ id: uid(), text: cap.text, date: cap.date, personId: cap.personId, createdAt: new Date().toISOString(), done: false });
@@ -2558,6 +2772,8 @@ function digestText() {
   if (oc.length) bits.push(`${oc[0].o.emoji} ${oc[0].o.name} ${inDays(oc[0].dd)}`);
   const pls = S.plans.filter(pl => !pl.done && daysUntil(pl.date) === 0);
   if (pls.length) bits.push(`📌 ${pls[0].title} today`);
+  const fus = dueFollowups(todayISO());
+  if (fus.length) { const p = S.people.find(x => x.id === fus[0].personId); bits.push(`⏰ ${fuTitle(fus[0], p)}${fus.length > 1 ? ` +${fus.length - 1}` : ""}`); }
   return bits.join(" · ");
 }
 function notifyDigest(force) {
@@ -2688,6 +2904,7 @@ async function mirrorAlertsToIDB() {
       for (const b of upcomingBirthdays(365)) if (b.date === day) lines.push(`🎂 ${b.p.name.split(" ")[0]}'s birthday`);
       for (const o of S.occasions.filter(o => o.enabled)) { const n = occasionNext(o); if (n === day) lines.push(`${o.emoji} ${o.name}`); }
       for (const pl of S.plans.filter(pl => !pl.done)) if (pl.date === day) lines.push(`📌 ${pl.title}`);
+      for (const fu of S.followups.filter(f => !f.done && f.date === day)) { const p = S.people.find(x => x.id === fu.personId); if (p) lines.unshift(`⏰ ${fuTitle(fu, p)}`); }
       if (lines.length) alerts.push({ date: day, text: lines.slice(0, 3).join(" · ") });
     }
     const db = await idbOpen();
@@ -2706,7 +2923,7 @@ async function registerPeriodicSync() {
     }
   } catch (e) { /* best-effort — needs installed PWA + engagement */ }
 }
-const APP_VERSION = "v19";
+const APP_VERSION = "v20";
 if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
   navigator.serviceWorker.register("sw.js").then(() => {
     if (Notification.permission === "granted") registerPeriodicSync();
@@ -2730,7 +2947,7 @@ async function forceUpdate() {
 
 /* ---------- boot ---------- */
 const _q = new URLSearchParams(location.search);
-if (_q.has("demo") && !S.people.length) { const s = SAMPLE(); S.people.push(...s.people); S.tasks.push(...s.tasks); S.plans.push(...s.plans); S.todos.push(...s.todos); if (!S.notes.length) S.notes.push({ id: uid(), title: "Gift ideas for Amma", body: "- that book on her tomato plants\n- a warm shawl", pinned: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), sample: true }); save(); }
+if (_q.has("demo") && !S.people.length) { const s = SAMPLE(); S.people.push(...s.people); S.tasks.push(...s.tasks); S.plans.push(...s.plans); S.todos.push(...s.todos); S.followups.push(...s.followups); if (!S.notes.length) S.notes.push({ id: uid(), title: "Gift ideas for Amma", body: "- that book on her tomato plants\n- a warm shawl", pinned: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), sample: true }); save(); }
 if (TABS.some(t => t.id === _q.get("tab"))) activeTab = _q.get("tab");
 if (_q.has("showall")) showAll = true; // test hook
 if (_q.has("focus")) setTimeout(() => { focusQueue = [...rightNowSnapshot]; focusIdx = 0; focusModal(); }, 400); // test hook
@@ -2801,6 +3018,33 @@ if (_q.has("selftest")) setTimeout(() => {
   ok("pick returns member", TOUCH_CHEERS.includes(pick(TOUCH_CHEERS)));
   ok("noteSnippet truncates", noteSnippet("a".repeat(300), 220).length === 221 && noteSnippet("hi", 220) === "hi");
   ok("notes tab exists", TABS.some(t => t.id === "notes"));
+  // follow-ups
+  ok("youify her->your", youify("her job interview") === "your job interview" && youify("Appa's checkup") === "Appa's checkup");
+  ok("followup msg warm", followupMessages({ name: "Priya Rao", tone: "warm" }, "her job interview")[0] === "Hey Priya! How did your job interview go?");
+  ok("followup msg respectful", followupMessages({ name: "Amma", tone: "respectful" }, "Appa's checkup")[1] === "Hello Amma! Just wanted to ask how Appa's checkup went.");
+  ok("followup generic when blank", followupMessages({ name: "Rohan", tone: "playful" }, "")[0] === "Rohan! Checking in. What's new?");
+  ok("followup unknown tone falls back", followupMessages({ name: "X", tone: "zzz" }, "the trip").length === 3);
+  ok("followup templates no em-dash", ![...Object.values(FOLLOWUP_LIBRARY).flat(), ...Object.values(GENERIC_FOLLOWUP)].some(s => /[–—]/.test(s)));
+  const fuTmp = { id: "fu-test-person", name: "Zara Test", phone: "", cadence: 30, interactions: [] };
+  S.people.push(fuTmp);
+  const fc1 = parseFollowupCapture("ask Zara about the interview friday");
+  ok("capture: ask X about Y day", !!fc1 && fc1.personId === "fu-test-person" && fc1.about === "the interview" && fc1.date !== todayISO());
+  ok("capture: how Y went", parseFollowupCapture("ask Zara how the exam went")?.about === "the exam");
+  ok("capture: check in with X", parseFollowupCapture("check in with Zara tomorrow")?.about === "" && parseFollowupCapture("check in with Zara tomorrow")?.date === addDays(todayISO(), 1));
+  ok("capture: non-follow-ups stay to-dos", parseFollowupCapture("buy shoes friday") === null && parseFollowupCapture("call Zara tomorrow") === null);
+  const fuSaved = S.followups;
+  S.followups = [
+    { id: "a", personId: "fu-test-person", about: "x", date: addDays(todayISO(), -2), done: false },
+    { id: "b", personId: "fu-test-person", about: "y", date: todayISO(), done: false },
+    { id: "c", personId: "fu-test-person", about: "z", date: addDays(todayISO(), 3), done: false },
+    { id: "d", personId: "fu-test-person", about: "w", date: todayISO(), done: true },
+    { id: "e", personId: "nobody", about: "v", date: todayISO(), done: false },
+  ];
+  ok("dueFollowups: due, open, real person, oldest first", dueFollowups(todayISO()).map(f => f.id).join() === "a,b");
+  ok("personFollowups: open only, by date", personFollowups("fu-test-person").map(f => f.id).join() === "a,b,c");
+  ok("fuTitle", fuTitle({ about: "the trip" }, fuTmp) === "Ask Zara about the trip" && fuTitle({ about: "" }, fuTmp) === "Check in with Zara");
+  S.followups = fuSaved;
+  S.people = S.people.filter(p => p.id !== "fu-test-person");
   ok("age turns 30", birthdayAge({ birthday: `${todayDate().getFullYear() - 30}-12-31` }) === 30);
   const d = document.createElement("div"); d.id = "selftest"; d.style.display = "none";
   d.textContent = t.join(" | ");
