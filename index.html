@@ -167,6 +167,20 @@ section.block { margin-bottom: 28px; }
 .topic-add input { width: 100%; font: inherit; font-size: 13.5px; color: var(--ink); background: var(--page); border: 1px solid var(--border); border-radius: 9px; padding: 8px 11px; outline: none; }
 .topic-add input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .focus-topics { font-size: 12.5px; color: color-mix(in srgb, var(--magenta) 70%, var(--ink)); margin-top: 3px; }
+.focus-gift { font-size: 12.5px; color: color-mix(in srgb, var(--gold) 55%, var(--ink)); margin-top: 3px; }
+.about-list { margin: 0 0 8px; padding: 0; list-style: none; font-size: 13.5px; color: var(--ink-2); }
+.about-list li { padding: 2px 0 2px 14px; position: relative; line-height: 1.45; }
+.about-list li::before { content: ""; position: absolute; left: 2px; top: 0.72em; width: 5px; height: 5px; border-radius: 50%; background: var(--gold); }
+.about-gift { background: color-mix(in srgb, var(--gold) 16%, transparent); border-radius: 9px; padding: 7px 11px; font-size: 13.5px; margin-bottom: 8px; color: var(--ink); }
+.about-input { field-sizing: content; min-height: 6.5em; max-height: 50vh; }
+.hero-gift { margin-top: 9px; font-size: 13.5px; color: var(--ink-2); cursor: pointer; }
+.people-search { margin: 0 0 14px; }
+.people-search input { width: 100%; font: inherit; font-size: 14.5px; color: var(--ink); background: var(--surface); border: 1px solid var(--border); border-radius: 11px; padding: 10px 13px; outline: none; }
+.people-search input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.person-card[hidden], .search-hit[hidden], .people-empty[hidden] { display: none; }
+.search-hit { font-size: 12.5px; color: var(--ink-2); margin-top: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.search-hit mark { background: color-mix(in srgb, var(--gold) 35%, transparent); color: inherit; border-radius: 3px; padding: 0 1px; }
+.people-empty { padding: 18px; color: var(--muted); font-size: 14px; }
 .focus-fu { font-size: 12.5px; color: color-mix(in srgb, var(--gold) 55%, var(--ink)); margin-top: 3px; font-weight: 600; }
 .fu-note { background: color-mix(in srgb, var(--gold) 14%, var(--surface)); }
 .sit-row { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; margin: 0 -2px; }
@@ -795,6 +809,54 @@ async function pickContactsBulk() {
 }
 const parseTopics = raw => String(raw ?? "").split("\n").map(s => s.trim()).filter(Boolean).slice(0, 20);
 
+/* ---------- About them: free text per person, one thing per line (kept in p.notes, never renamed) ---------- */
+// lines starting "gift:", "gift idea -" or "🎁" come back when their birthday is near
+const GIFT_RE = /^(?:🎁\s*(?:gifts?(?:\s+ideas?)?\s*[:\-]?\s*)?|gifts?(?:\s+ideas?)?\s*[:\-]\s*)/i;
+const aboutLines = p => String(p?.notes ?? "").split("\n").map(s => s.trim()).filter(Boolean);
+const giftIdeas = p => aboutLines(p).filter(l => GIFT_RE.test(l)).map(l => l.replace(GIFT_RE, "").trim()).filter(Boolean);
+const aboutFacts = p => aboutLines(p).filter(l => !GIFT_RE.test(l));
+function addAbout(p, line) {
+  const l = String(line ?? "").trim();
+  if (!l) return false;
+  p.notes = [String(p.notes ?? "").replace(/\s+$/, ""), l].filter(Boolean).join("\n");
+  return true;
+}
+// typed on Today: "remember Priya is vegetarian", "note Priya's sister is Meera", "note for Rohan: moved to Pune"
+const ABOUT_CUE = /^(?:remember|note)(?:\s+(?:that|for|about))?\s*:?\s+/i;
+function parseAboutCapture(raw) {
+  const t = String(raw ?? "").trim();
+  if (!ABOUT_CUE.test(t) || /^remember\s+to\b/i.test(t)) return null;
+  const rest = t.replace(ABOUT_CUE, "");
+  // try full names before first names, so "Uncle Suresh" beats "Uncle"
+  const cands = S.people.flatMap(p => [...new Set([p.name.trim(), p.name.trim().split(" ")[0]])].filter(n => n.length >= 2).map(n => ({ p, n })))
+    .sort((a, b) => b.n.length - a.n.length);
+  for (const { p, n } of cands) {
+    const m = rest.match(new RegExp(`^${escRe(n)}(['’]s)?(?![\\w])\\s*[,:\\-]?\\s*`, "i"));
+    if (!m) continue;
+    let fact = rest.slice(m[0].length).trim();
+    if (!m[1]) fact = fact.replace(/^is\s+/i, "");
+    fact = fact.replace(/\.+$/, "").trim();
+    return fact ? { personId: p.id, fact } : null;
+  }
+  return null;
+}
+// People search looks through names, About, their people, bring-up topics and notes from past touches
+function personSearchHit(p, q) {
+  const needle = String(q ?? "").trim().toLowerCase();
+  if (!needle || p.name.toLowerCase().includes(needle)) return { hit: true, snippet: "" };
+  const sources = [...aboutLines(p), p.circle ?? "", ...(p.topics ?? []).map(t => "bring up: " + t), ...(p.interactions ?? []).filter(i => i.note).map(i => i.note)];
+  const line = sources.find(x => x && x.toLowerCase().includes(needle));
+  return line ? { hit: true, snippet: line } : { hit: false, snippet: "" };
+}
+function markHit(s, q) {
+  const n = String(q ?? "").trim(), str = String(s ?? "");
+  const i = n ? str.toLowerCase().indexOf(n.toLowerCase()) : -1;
+  if (i < 0) return esc(str);
+  const start = i > 40 ? i - 30 : 0;
+  return esc((start ? "…" : "") + str.slice(start, i)) + "<mark>" + esc(str.slice(i, i + n.length)) + "</mark>" + esc(str.slice(i + n.length));
+}
+let peopleQ = "";
+
 /* ---------- smart capture: "call Amma tomorrow" → intention with person + date ---------- */
 const WEEKDAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
 function parseCapture(raw) {
@@ -1155,6 +1217,15 @@ function msgModal(id, fuId, sit) {
     <h2 class="serif">Message ${first}</h2>
     ${fu ? `<div class="msg-note fu-note">⏰ You wanted to ${fu.about ? `ask about <b>${esc(fu.about)}</b>` : "<b>check in</b>"}${fu.date < todayISO() ? ` (since ${fmtNice(fu.date).toLowerCase()})` : fu.date > todayISO() ? ` (set for ${fmtNice(fu.date).toLowerCase()})` : ""}. <button type="button" class="linkish" data-act="msg-general" data-id="${id}">General message instead</button></div>`
       : note ? `<div class="msg-note">📝 Last time you talked about <b>${esc(note.note)}</b> — maybe pick that back up?</div>` : ""}
+    ${(() => {
+      const facts = aboutFacts(p), gifts = giftIdeas(p);
+      const showGifts = gifts.length && (situation === "birthday" || birthdayNear(p));
+      return `<div class="field about-box"><label style="display:flex;justify-content:space-between;align-items:baseline">About ${first}${facts.length || gifts.length ? ` <button type="button" class="linkish" data-act="edit-person" data-id="${id}">edit</button>` : ""}</label>
+        ${showGifts ? `<div class="about-gift">🎁 Gift ideas: ${esc(gifts.join(" · "))}</div>` : ""}
+        ${facts.length ? `<ul class="about-list">${facts.slice(0, 5).map(l => `<li>${esc(l)}</li>`).join("")}</ul>${facts.length > 5 ? `<button type="button" class="linkish" data-act="edit-person" data-id="${id}" style="margin:-4px 0 8px">+${facts.length - 5} more</button>` : ""}` : ""}
+        <form id="aboutAddForm" data-id="${id}" class="topic-add"><input name="fact" placeholder="+ Something you know about ${first}, press Enter" autocomplete="off" maxlength="200"></form>
+      </div>`;
+    })()}
     <div class="field"><label>Bring up with ${first}</label>
       <div class="topic-list">
         ${topics.map((tp, i) => `<span class="topic-chip">${esc(tp)}<button type="button" data-act="topic-del" data-id="${id}" data-i="${i}" aria-label="Remove">✕</button></span>`).join("")}
@@ -1335,6 +1406,7 @@ function renderToday() {
     <h2 class="serif">${greet}, Garrick</h2>
     <p>${parts.length ? parts.join(" · ") : `<span class="all-clear">✓ All caught up — everyone's close.</span>`}</p>
     ${weekStrip()}
+    ${(() => { const g = bdays.find(b => b.dd >= 1 && giftIdeas(b.p).length); if (!g) return ""; const idea = giftIdeas(g.p)[0]; return `<div class="hero-gift" data-act="edit-person" data-id="${g.p.id}">🎁 <b>${esc(g.p.name.split(" ")[0])}</b>'s birthday is ${inDays(g.dd)}. Gift idea: ${esc(idea.length > 60 ? idea.slice(0, 60) + "…" : idea)}</div>`; })()}
     ${(() => { const otd = onThisDay(); return otd ? `<div style="margin-top:11px;font-size:13.5px;color:var(--ink-2)">🕰 ${otd.label}, you and <b>${esc(otd.p.name.split(" ")[0])}</b> talked about “${esc(otd.note)}” — worth a follow-up?</div>` : ""; })()}
   </div>`;
   if (new Date().getDate() <= 5 && S.settings.lastReviewMonth !== todayISO().slice(0, 7) && S.people.length) {
@@ -1393,7 +1465,7 @@ function renderToday() {
     return `<div class="focus-card card">
       <div class="focus-top">${avatarRing(p, st)}
         <div class="info"><div class="name">${esc(p.name)}</div>
-        <div class="why ${st.status === "late" ? "overdue" : ""}">${why}</div>${noteLine(p)}${(p.topics ?? []).length ? `<div class="focus-topics">💬 bring up: ${esc((p.topics ?? []).join(", "))}</div>` : ""}${(() => { const f = personFollowups(p.id).find(x => x.date <= todayISO()); return f ? `<div class="focus-fu">⏰ ${f.about ? `ask about ${esc(f.about)}` : "check in"}</div>` : ""; })()}</div>
+        <div class="why ${st.status === "late" ? "overdue" : ""}">${why}</div>${nb !== null && nb <= 1 && giftIdeas(p).length ? `<div class="focus-gift">🎁 ${esc(giftIdeas(p).join(", "))}</div>` : ""}${noteLine(p)}${(p.topics ?? []).length ? `<div class="focus-topics">💬 bring up: ${esc((p.topics ?? []).join(", "))}</div>` : ""}${(() => { const f = personFollowups(p.id).find(x => x.date <= todayISO()); return f ? `<div class="focus-fu">⏰ ${f.about ? `ask about ${esc(f.about)}` : "check in"}</div>` : ""; })()}</div>
       </div>
       <div class="focus-actions">
         ${hasWA(p) ? `<button class="btn wa grow" data-act="msg" data-id="${p.id}">💬 WhatsApp</button>`
@@ -1466,7 +1538,7 @@ function renderToday() {
         const age = birthdayAge(p);
         return `<div class="row" data-act="edit-person" data-id="${p.id}">
           <div class="avatar-ring"><div class="face" style="background:${avatarColor(p)};inset:6px">${esc(p.emoji || p.name[0].toUpperCase())}</div></div>
-          <div class="info"><div class="name">${esc(p.name)}</div><div class="sub">🎂 ${fmtNice(date)}${age ? ` · turns ${age}` : ""}${dd === 0 ? " — today!" : ` · ${inDays(dd)}`}</div></div>
+          <div class="info"><div class="name">${esc(p.name)}</div><div class="sub">🎂 ${fmtNice(date)}${age ? ` · turns ${age}` : ""}${dd === 0 ? " — today!" : ` · ${inDays(dd)}`}${giftIdeas(p).length ? ` · 🎁 ${esc(giftIdeas(p)[0])}` : ""}</div></div>
           <div class="side">${dd === 0 && wa ? `<a class="btn wa sm" href="${wa}" target="_blank" rel="noopener" data-act="wa-then-ask" data-id="${p.id}">Send wishes</a>` : `<span class="chip ${dd <= 1 ? "late" : "neutral"}"><span class="dot"></span>${inDays(dd)}</span>`}</div>
         </div>`;
       }).join("") + `</div></section>`;
@@ -1531,15 +1603,18 @@ function renderPeople() {
   </div>`;
 
   html += `<section class="block"><div class="block-head"><h2>People</h2><span><button class="more" data-act="open-review">☾ Review</button> <button class="more" data-act="bulk-add">⚡ Quick add</button> <button class="more" data-act="add-person">+ Add person</button></span></div>
+    ${S.people.length >= 2 ? `<div class="people-search"><input id="peopleSearch" type="search" placeholder="🔎 Search people and what you know about them" value="${esc(peopleQ)}" autocomplete="off" aria-label="Search people"></div>` : ""}
     <div class="people-grid">` + list.map(({ p, st, h }) => {
       const hl = healthLabel(h);
+      const sh = personSearchHit(p, peopleQ);
       const wa = waLink(p, nudgeText(p));
-      return `<div class="person-card card" data-act="edit-person" data-id="${p.id}">
+      return `<div class="person-card card" data-act="edit-person" data-id="${p.id}"${sh.hit ? "" : " hidden"}>
         <div class="person-head">${avatarRing(p, st, true)}
           <div class="info"><div class="name">${esc(p.name)}</div>
           <div class="cadence">every ${p.cadence} days${p.birthday ? ` · 🎂 ${fmtNice(nextBirthday(p))}` : ""}</div></div>
         </div>
         ${noteLine(p)}
+        <div class="search-hit"${sh.snippet ? "" : " hidden"}>${sh.snippet ? "🔎 " + markHit(sh.snippet, peopleQ) : ""}</div>
         <div class="person-meta">
           <span class="tl-link" data-act="history" data-id="${p.id}" title="See the timeline">${st.everContacted ? `last touch ${agoDays(st.since)}` : "never logged"} ›</span>
           <span class="health" title="${h === null ? "Log a couple of touches to see a trend" : `Consistency score: ${h}%`}"><span class="dot" style="background:${hl.color}"></span>${hl.word}</span>
@@ -1550,7 +1625,7 @@ function renderPeople() {
           <button class="btn ghost sm" data-act="log-when" data-id="${p.id}" title="Log an earlier day">▾</button>
         </div>
       </div>`;
-    }).join("") + `</div></section>`;
+    }).join("") + `</div><div id="peopleEmpty" class="people-empty card"${list.some(({ p }) => personSearchHit(p, peopleQ).hit) ? " hidden" : ""}>No one matches “${esc(peopleQ.trim())}”. Try a word from their About.</div></section>`;
 
   html += `<section class="block"><div class="block-head"><h2>Routines</h2><button class="more" data-act="add-task">+ Add routine</button></div>`;
   if (S.tasks.length) {
@@ -1880,6 +1955,10 @@ function personModal(p) {
   const moments = [...(p.interactions ?? [])].filter(i => i.note)
     .sort((a, b) => (b.date < a.date ? -1 : 1)).slice(0, 3);
   const fus = isNew ? [] : personFollowups(p.id);
+  const firstName = p.name ? esc(p.name.split(" ")[0]) : "them";
+  const aboutField = `<div class="field"><label>About ${firstName} <span style="font-weight:400;color:var(--muted)">(optional)</span></label>
+        <textarea name="notes" class="about-input" rows="${Math.min(10, Math.max(4, aboutLines(p).length + 1))}" placeholder="works at Infosys, moved to Pune in March&#10;vegetarian · huge Arsenal fan&#10;met at the college fest, 2023&#10;gift: that Murakami book they mentioned">${esc(p.notes ?? "")}</textarea>
+        <div class="hint">One thing per line. Shows when you message ${firstName}, and People search finds it. Lines starting <b>gift:</b> come back near their birthday. Quick way: type “remember ${p.name ? firstName : "Priya"} loves jazz” on Today.</div></div>`;
   const recap = !isNew && (moments.length || p.circle || fus.length) ? `
     <div style="background:var(--page);border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:13.5px;line-height:1.6">
       ${p.circle ? `<div style="margin-bottom:6px">👨‍👩‍👧 ${esc(p.circle)}</div>` : ""}
@@ -1891,6 +1970,7 @@ function personModal(p) {
     ${recap}
     <form id="personForm" data-id="${p.id ?? ""}">
       ${isNew && hasContactPicker ? `<button type="button" class="btn sm" data-act="pick-contact" style="margin-bottom:12px">📇 Pick from your contacts</button>` : ""}
+      ${isNew ? "" : aboutField}
       <div class="field"><label>Name</label><input name="name" required value="${esc(p.name)}" placeholder="Amma"></div>
       <div class="field"><label>WhatsApp number</label><input name="phone" value="${esc(p.phone ?? "")}" placeholder="+91 98765 43210" inputmode="tel">
         <div class="hint">With country code — used for one-tap WhatsApp messages.</div></div>
@@ -1915,8 +1995,7 @@ function personModal(p) {
       <div class="field"><label>Bring up next time <span style="font-weight:400;color:var(--muted)">(optional)</span></label>
         <textarea name="topics" rows="2" placeholder="her Goa trip&#10;his knee surgery — one per line">${esc((p.topics ?? []).join("\n"))}</textarea>
         <div class="hint">These resurface every time you message them, until you tick them off.</div></div>
-      <div class="field"><label>Notes <span style="font-weight:400;color:var(--muted)">(optional)</span></label>
-        <textarea name="notes" rows="2" placeholder="How you met, what matters to them…">${esc(p.notes ?? "")}</textarea></div>
+      ${isNew ? aboutField : ""}
       <div class="modal-actions">
         ${!isNew ? `<button type="button" class="btn danger left" data-act="del-person" data-id="${p.id}">Delete</button>` : ""}
         ${!isNew ? `<button type="button" class="btn" data-act="history" data-id="${p.id}">📈 Timeline (${(p.interactions ?? []).length})</button>` : ""}
@@ -2033,6 +2112,7 @@ function mapContacts(rows) {
   const iMiddle = idx(h => h === "middle name" || h === "additional name");
   const iLast = idx(h => h === "last name" || h === "family name");
   const iBday = idx(h => h.includes("birthday"));
+  const iNotes = idx(h => h === "notes" || h === "note");
   const phoneIdxs = head.map((h, i) => ((/phone/.test(h) && /value/.test(h)) || h === "phone" || h === "mobile" || h === "phone number") ? i : -1).filter(i => i >= 0);
   const out = [];
   for (const r of rows.slice(1)) {
@@ -2052,7 +2132,7 @@ function mapContacts(rows) {
       else if ((m = rawB.match(/^--?(\d{1,2})-(\d{1,2})$/))) bday = `0004-${pad2(+m[1])}-${pad2(+m[2])}`; // Google "year unknown"
       else bday = parseBirthday(rawB) ?? "";
     }
-    out.push({ name, phone, birthday: bday });
+    out.push({ name, phone, birthday: bday, notes: iNotes >= 0 ? (r[iNotes] ?? "").trim() : "" });
   }
   return out;
 }
@@ -2503,6 +2583,9 @@ const SAMPLE = () => {
   people[2].tone = "playful";      // Rohan
   people[2].topics = ["his new apartment", "the Goa trip plan"];
   people[4].tone = "respectful";   // Uncle Suresh
+  people[0].notes = "terrace garden, mostly tomatoes\nknees hurt in the mornings, ask gently\ngift: a warm shawl";
+  people[2].notes = "moved to Indiranagar in October\nhuge Arsenal fan\nvegetarian, skip the BBQ place\ngift: the new FC game";
+  people[3].notes = "interviewing for product roles\nsister Meera studies in Pune";
   return {
     people,
     tasks: [
@@ -2939,6 +3022,23 @@ document.addEventListener("click", e => {
   else { inp.style.display = "none"; inp.value = b.dataset.days; }
 });
 
+function applyPeopleSearch() {
+  let shown = 0;
+  document.querySelectorAll(".person-card[data-id]").forEach(card => {
+    const p = S.people.find(x => x.id === card.dataset.id);
+    if (!p) return;
+    const sh = personSearchHit(p, peopleQ);
+    card.hidden = !sh.hit;
+    if (sh.hit) shown++;
+    const hitEl = card.querySelector(".search-hit");
+    if (hitEl) { hitEl.hidden = !sh.snippet; hitEl.innerHTML = sh.snippet ? "🔎 " + markHit(sh.snippet, peopleQ) : ""; }
+  });
+  const empty = $("#peopleEmpty");
+  if (empty) { empty.hidden = shown > 0; empty.textContent = `No one matches “${peopleQ.trim()}”. Try a word from their About.`; }
+}
+document.addEventListener("input", e => {
+  if (e.target.id === "peopleSearch") { peopleQ = e.target.value; applyPeopleSearch(); }
+});
 document.addEventListener("submit", e => {
   e.preventDefault();
   const f = e.target;
@@ -2975,6 +3075,17 @@ document.addEventListener("submit", e => {
     const p = S.people.find(x => x.id === f.dataset.id);
     const topic = (fd.get("topic") ?? "").trim();
     if (p && topic) { p.topics = [...(p.topics ?? []), topic].slice(0, 20); save(); msgModal(p.id); }
+  } else if (f.id === "aboutAddForm") {
+    const p = S.people.find(x => x.id === f.dataset.id);
+    const fact = (fd.get("fact") ?? "").trim();
+    if (!p || !addAbout(p, fact)) return;
+    save();
+    // add in place: re-opening the picker would throw away a message you're halfway through
+    let ul = f.parentElement.querySelector(".about-list");
+    if (!ul) { ul = document.createElement("ul"); ul.className = "about-list"; f.before(ul); }
+    const li = document.createElement("li"); li.textContent = fact; ul.append(li);
+    f.reset();
+    toast(`Saved to ${p.name.split(" ")[0]}'s About ✓`);
   } else if (f.id === "msgForm") {
     const p = S.people.find(x => x.id === f.dataset.id);
     const text = ($("#msgForm textarea")?.value ?? "").trim();
@@ -3010,6 +3121,16 @@ document.addEventListener("submit", e => {
   } else if (f.id === "todoAddForm") {
     const raw = (fd.get("text") ?? "").trim();
     if (!raw) return;
+    const acap = parseAboutCapture(raw);
+    if (acap) {
+      const p = S.people.find(x => x.id === acap.personId);
+      const before = p.notes ?? "";
+      addAbout(p, acap.fact);
+      save(); render();
+      toast(`📌 Saved to ${p.name.split(" ")[0]}'s About: ${acap.fact}`, () => { p.notes = before; save(); render(); });
+      setTimeout(() => { const inp = $("#todoAddForm input"); if (inp) inp.focus(); }, 30);
+      return;
+    }
     const fcap = parseFollowupCapture(raw);
     if (fcap) {
       const fu = addFollowup(fcap.personId, fcap.about, fcap.date);
@@ -3062,7 +3183,7 @@ document.addEventListener("submit", e => {
     for (const i of picks) {
       const c = csvContacts[i];
       if (!c) continue;
-      S.people.push({ id: uid(), name: c.name, phone: c.phone, birthday: c.birthday, cadence, notes: "", createdAt: todayISO(), interactions: [] });
+      S.people.push({ id: uid(), name: c.name, phone: c.phone, birthday: c.birthday, cadence, notes: c.notes ?? "", createdAt: todayISO(), interactions: [] });
     }
     save(); closeModal(); render();
     toast(`${picks.length} ${picks.length === 1 ? "person" : "people"} added ✓`);
@@ -3280,7 +3401,7 @@ async function registerPeriodicSync() {
     }
   } catch (e) { /* best-effort — needs installed PWA + engagement */ }
 }
-const APP_VERSION = "v23";
+const APP_VERSION = "v24";
 if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
   navigator.serviceWorker.register("sw.js").then(() => {
     if (Notification.permission === "granted") registerPeriodicSync();
@@ -3427,6 +3548,23 @@ if (_q.has("selftest")) setTimeout(() => {
   S.settings.savedMsgs = ["Yo {name}"];
   ok("mine lists saved messages", situationStarters(sp, "mine").join() === "Yo {name}" && fillTemplate("Yo {name}", sp) === "Yo Rohan");
   S.settings.savedMsgs = savedBefore;
+  // about them
+  const ab = { id: "ab1", name: "Zoya Kapoor", notes: "works at Infosys\n\n  vegetarian \ngift: that Murakami book\n🎁 a plant\nGift idea - silver earrings\ngifted her a mug last year" };
+  ok("about: lines trimmed, blanks dropped", aboutLines(ab).length === 6 && aboutLines(ab)[1] === "vegetarian");
+  ok("about: gift lines parsed", JSON.stringify(giftIdeas(ab)) === JSON.stringify(["that Murakami book", "a plant", "silver earrings"]));
+  ok("about: facts skip gift lines but keep 'gifted'", aboutFacts(ab).length === 3 && aboutFacts(ab)[2] === "gifted her a mug last year");
+  const ab2 = { notes: "" }; addAbout(ab2, " likes jazz "); addAbout(ab2, "moved to Pune"); addAbout(ab2, "  ");
+  ok("about: addAbout appends one line each", ab2.notes === "likes jazz\nmoved to Pune");
+  S.people.push(ab, { id: "ab2", name: "Uncle Zubin", notes: "" });
+  ok("capture: remember X is Y", JSON.stringify(parseAboutCapture("remember Zoya is vegetarian")) === JSON.stringify({ personId: "ab1", fact: "vegetarian" }));
+  ok("capture: note X's Y", parseAboutCapture("note Zoya's sister is Meera")?.fact === "sister is Meera");
+  ok("capture: note for X: Y", parseAboutCapture("note for Zoya: moved to Pune.")?.fact === "moved to Pune");
+  ok("capture: full name beats first name", parseAboutCapture("remember Uncle Zubin had knee surgery")?.personId === "ab2" && parseAboutCapture("remember Uncle Zubin had knee surgery")?.fact === "had knee surgery");
+  ok("capture: 'remember to', no person, partial name stay to-dos", parseAboutCapture("remember to call Zoya") === null && parseAboutCapture("remember the milk") === null && parseAboutCapture("remember Zoyanka is back") === null);
+  ok("search: name, About, misses", personSearchHit(ab, "kapoor").hit && personSearchHit(ab, "VEGET").snippet === "vegetarian" && !personSearchHit(ab, "arsenal").hit && personSearchHit(ab, "").hit);
+  ok("search: marks the match", markHit("big Arsenal fan", "arsenal") === "big <mark>Arsenal</mark> fan");
+  S.people = S.people.filter(p => p.id !== "ab1" && p.id !== "ab2");
+  ok("csv notes come in as About", mapContacts([["Name", "Phone", "Notes"], ["Asha", "+91 98450 00000", "met at Stripe"]])[0].notes === "met at Stripe");
   // tracking
   const tpD = n => addDays(todayISO(), -n);
   const closerP = { cadence: 30, interactions: [100, 70, 40, 25, 12, 5].map((n, i) => ({ date: tpD(n), ...(i < 3 ? { via: "call" } : i === 3 ? { via: "met" } : {}) })) };
