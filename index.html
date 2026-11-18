@@ -725,7 +725,7 @@ function waLink(p, text) {
 function fillTemplate(tpl, p, occName) {
   return tpl.replaceAll("{name}", p.name.split(" ")[0]).replaceAll("{occasion}", occName ?? "");
 }
-const NUDGE_TPL = "Hey {name}! It's been a while, how have you been?";
+const NUDGE_TPL = "hey {name}! long time, how've you been?";
 function gcalLink(pl) {
   const start = pl.date.replaceAll("-", "");
   const end = addDays(pl.date, 1).replaceAll("-", "");
@@ -733,33 +733,34 @@ function gcalLink(pl) {
   const details = [pl.note, person ? `With ${person.name}` : "", "— from Kith"].filter(Boolean).join("\n");
   return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(pl.title)}&dates=${start}/${end}&details=${encodeURIComponent(details)}`;
 }
-const OCC_TPL = "Happy {occasion}, {name}! 🎉 Thinking of you and hope you're doing great. Let's catch up soon!";
-const BDAY_TPL = "Happy birthday, {name}! 🎂🎉 Hope this year is your best one yet!";
+const OCC_TPL = "Happy {occasion} {name}!! 🎉 have a great one";
+const BDAY_TPL = "Happy birthday {name}!! 🎂 have the best day";
 
 /* ---------- message tones & starter library ---------- */
 const TONES = [["warm", "Warm"], ["respectful", "Respectful"], ["playful", "Fun & quirky"]];
 const toneLabel = t => (TONES.find(x => x[0] === t) ?? TONES[0])[1];
 const MSG_LIBRARY = {
+  // written like real texts: short, loose, lowercase with friends. Not every line needs their name.
   respectful: [
-    "Hi {name}, hope you're keeping well! You've been on my mind. How have you been?",
-    "Hello {name}! It's been too long. How are you and everyone at home?",
-    "Hi {name}, just wanted to check in and see how you're doing.",
-    "Hope all's well, {name}! Been meaning to catch up. How are things your side?",
-    "Hi {name}! Thinking of you today. How have you been keeping?",
+    "Hi {name}! How are you? Had food?",
+    "Hi {name}, how's your health? All good at home?",
+    "Hi {name}, how are you doing? Missing you ❤️",
+    "Hello {name}! Long time. How is everyone?",
+    "Hi {name}, how are you? Will call you this weekend 🙏",
   ],
   warm: [
-    "Hey {name}! It's been a while, how have you been?",
-    "Hi {name}! You popped into my head today. How's everything going?",
-    "Hey {name}, it's been too long! What have you been up to?",
-    "Heyy {name}! How's life treating you these days?",
-    "Hi {name}! Long time. Tell me what's new with you.",
+    "hey {name}! long time, how've you been?",
+    "hey, been a while! what's new with you?",
+    "hi {name}, how's everything going?",
+    "heyy how are you doing these days?",
+    "hey {name}, how's life? feels like ages since we caught up",
   ],
   playful: [
-    "Oi {name}, you're officially overdue for an update. Spill.",
-    "{name}!! I've decided we've been strangers for too long. Fix it.",
-    "Hey stranger, how's the chaos going?",
-    "Okayyy it's been way too long, tell me everythingggg",
-    "{name}, this is your reminder that you owe me a proper catch-up.",
+    "{name}!! where have you disappeared",
+    "oi stranger, you alive?",
+    "long time yaar, what's the scene",
+    "hello?? remember me 😂",
+    "{name} it's been forever, update me",
   ],
 };
 function pickStarters(tone, n) {
@@ -836,25 +837,25 @@ const escRe = s => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 // one of each: [how did it go (an event that happened), any news (fits anything), how's it going (ongoing)]
 const FOLLOWUP_LIBRARY = {
   respectful: [
-    "Hi {name}, how did {about} go? Hope it went well.",
-    "Hello {name}! Any news on {about}?",
-    "Hi {name}, I was thinking about {about}. How is it going?",
+    "Hi {name}, how did {about} go? All okay?",
+    "Hi {name}, any news on {about}?",
+    "Hi {name}, how is {about} going?",
   ],
   warm: [
-    "Hey {name}! How did {about} go?",
-    "Hi {name}! Any news on {about}?",
-    "Hey {name}, how's {about} going?",
+    "hey! how did {about} go?",
+    "any update on {about}?",
+    "hey {name}, how's {about} going?",
   ],
   playful: [
-    "Okay {name}, how did {about} go? Tell me everything",
-    "{name}!! Update on {about}. Now.",
-    "So?? How's {about} going, {name}?",
+    "so how did {about} go?? 👀",
+    "update on {about} pls",
+    "{name}! how's {about} going",
   ],
 };
 const GENERIC_FOLLOWUP = {
-  respectful: "Hi {name}, just checking in. How have things been since we last spoke?",
-  warm: "Hey {name}! Checking in, how have things been?",
-  playful: "{name}! Checking in. What's new?",
+  respectful: "Hi {name}, how are you? All good?",
+  warm: "hey, how've things been?",
+  playful: "{name}! what's new with you",
 };
 // you write "her interview" in your notes; the message to her should say "your interview"
 const youify = about => String(about ?? "").trim().replace(/^(her|his|their)\b/i, "your");
@@ -954,131 +955,145 @@ const SITUATIONS = [
 const SITUATION_LIBRARY = {
   plan: {
     respectful: [
-      "Hi {name}, I'd love to come see you soon. When would be a good time?",
-      "Hello {name}! Are you free this weekend? Would love to visit.",
-      "Hi {name}, it's been too long. Can I come over one of these days?",
-      "Hi {name}, shall we plan a lunch together soon?",
+      "Hi {name}, when can I come over? It's been too long",
+      "Hi {name}! Planning to visit soon. When is good for you?",
+      "Hi {name}, shall we go for lunch one of these days?",
+      "Hi {name}, I'll come see you this weekend. Will you be home?",
     ],
     warm: [
-      "Hey {name}! We should catch up properly. Free this weekend?",
-      "Hi {name}! Coffee sometime this week?",
-      "Hey {name}, let's actually meet this month. What does your week look like?",
-      "Hey {name}! Dinner soon? Pick a day.",
+      "hey! we should catch up properly, free this weekend?",
+      "coffee sometime this week {name}?",
+      "let's meet soon na, what does your week look like?",
+      "hey {name}, dinner this weekend? been ages",
     ],
     playful: [
-      "{name}. Us. This weekend. Food. Thoughts?",
-      "Okay we keep saying we'll meet. Saturday? Don't say no {name}",
-      "{name}! Plan time. When are you free, no excuses",
-      "Calling an emergency catch-up, {name}. When are you free?",
+      "ok we're meeting this weekend, no excuses",
+      "{name} when are we hanging out yaar",
+      "plan this weekend? food on me (maybe)",
+      "you free saturday? let's do something",
     ],
   },
   congrats: {
     respectful: [
-      "Congratulations, {name}! So happy for you.",
-      "Hi {name}, just heard the news. Many congratulations!",
-      "Congratulations {name}! You truly deserve this.",
-      "Hearty congratulations, {name}! Wishing you all the best.",
+      "Congratulations {name}! So happy for you 🙏",
+      "Hi {name}, heard the good news! Congratulations!",
+      "Congrats {name}! Very proud of you",
+      "Many congratulations {name}! All the best",
     ],
     warm: [
-      "Congrats {name}! So so happy for you",
-      "Just heard!! Congratulations {name}, you deserve this",
-      "{name}!! Congrats, this is huge",
-      "Proud of you {name}. Congrats!",
+      "congrats {name}!! so happy for you",
+      "just heard, congratulations!! you deserve it",
+      "omg congrats!! this is huge",
+      "congrats {name} 🎉 so proud of you",
     ],
     playful: [
-      "{name}!!! Look at you go. Congrats!!",
-      "Okay this calls for a treat. Congrats {name}!",
-      "Congrats {name}! Party when?",
-      "Who's this legend? Oh wait it's {name}. Congrats!!",
+      "LETS GOOO congrats {name}!!",
+      "{name}!!! congrats, treat when?",
+      "look at you go 🔥 congrats!!",
+      "congrats yaar, party pending",
     ],
   },
   tough: {
     respectful: [
-      "Hi {name}, I heard what happened. I'm thinking of you. Please let me know if you need anything.",
-      "Hello {name}, just wanted you to know I'm here for you.",
-      "Hi {name}, sending you strength. Call me whenever you'd like to talk.",
-      "Hi {name}, I'm so sorry to hear. Please take care of yourself.",
+      "Hi {name}, I heard what happened. I'm so sorry. Please take care 🙏",
+      "Hi {name}, let me know if you need anything at all",
+      "Hi {name}, I'm here if you want to talk. Will call you",
+      "Hi {name}, so sorry to hear. Take care of yourself ❤️",
     ],
     warm: [
-      "Hey {name}, I heard. I'm really sorry. I'm here if you want to talk.",
-      "Thinking of you {name}. No need to reply, just wanted you to know.",
-      "Hey {name}, that sounds really hard. Want to talk, or want a distraction?",
-      "{name}, I'm around this week. Say the word and I'll come by.",
+      "hey, just heard. I'm really sorry. here if you want to talk",
+      "{name} no need to reply, just know I'm around",
+      "that sounds really rough. want to talk or want a distraction?",
+      "hey {name}, I'm free this week if you need anything. even just food",
     ],
     playful: [
-      "Hey {name}, heard things have been rough. Want me to come over with food?",
-      "{name}, you don't have to reply. Just know I'm here, always.",
-      "Rough week? I'm free whenever you need a distraction, {name}",
-      "Sending a hug your way {name}. Call me if you want to vent.",
+      "heard things have been rough. want me to come over? I'll bring food",
+      "rough week? say the word and I'm there",
+      "big hug {name}. call me whenever, I mean it",
+      "want to grab chai and not talk about it? I'm free",
     ],
   },
   late: {
     respectful: [
-      "Hi {name}, so sorry for the late reply! How are you?",
-      "Hello {name}, apologies for not responding sooner. Hope all is well with you.",
-      "Hi {name}, sorry it took me so long to get back. How have you been?",
-      "Hi {name}, I'm sorry I missed your message. How are things?",
+      "Hi {name}, sorry for the late reply! How are you?",
+      "Sorry {name}, I missed your message. All good?",
+      "Hi {name}, so sorry, was very busy with work. How are you doing?",
+      "Sorry for replying so late {name} 🙏 How are things?",
     ],
     warm: [
-      "Hey {name}! Sorry for the super late reply. How are you?",
-      "Hi {name}, I'm so sorry I went quiet. Things got busy. How've you been?",
-      "Ahh sorry {name}, I saw this and forgot to reply. Tell me everything",
-      "Hey {name}, sorry for disappearing! What's new?",
+      "sorry for the super late reply! how are you?",
+      "ahh sorry {name}, saw this and totally forgot to reply",
+      "sorry I went mia, things got crazy. how've you been?",
+      "hey sorry for disappearing! what's new?",
     ],
     playful: [
-      "Okay I'm the worst at replying. Sorry {name}! What's up?",
-      "{name}, I have no excuse. Sorry for the late reply",
-      "Back from the dead. Sorry {name}! How are you?",
-      "Sorry sorry sorry {name}. Replying now before I forget again",
+      "ok I'm the worst at replying I know. sorry 😭",
+      "sorry sorry sorry, replying before I forget again",
+      "back from the dead. sorry {name}!",
+      "I have no excuse. sorry for the late reply 😂",
     ],
   },
   thanks: {
     respectful: [
-      "Thank you so much, {name}. It really means a lot.",
-      "Hi {name}, thank you for everything. I'm very grateful.",
-      "Thank you {name}, that was really kind of you.",
-      "Hello {name}, I just wanted to say thank you.",
+      "Thank you so much {name} 🙏 means a lot",
+      "Thanks a lot {name}, really appreciate it",
+      "Thank you {name}! That was very sweet of you",
+      "Thank you for everything {name} ❤️",
     ],
     warm: [
-      "Thank you {name}! Really appreciate it",
-      "Hey {name}, thanks for today. Meant a lot",
-      "You're the best, {name}. Thank you",
-      "Thanks so much {name}, seriously",
+      "thank you {name}!! really appreciate it",
+      "thanks for today, needed that",
+      "you're the best, thank you",
+      "thanks so much {name}, seriously",
     ],
     playful: [
-      "{name} you absolute legend. Thank you!",
-      "I owe you one. Okay maybe two. Thanks {name}!",
-      "What would I do without you {name}. Thank you!!",
-      "Thanks {name}! Next coffee's on me",
+      "{name} you legend, thank you!!",
+      "I owe you one. maybe two. thanks!!",
+      "what would I do without you 😭 thank you",
+      "thanks {name}! next coffee's on me",
     ],
   },
   birthday: {
     respectful: [
-      "Happy birthday, {name}! Wishing you good health and happiness always.",
-      "Many happy returns of the day, {name}! Have a wonderful year ahead.",
-      "Happy birthday {name}! May this year bring you lots of joy.",
-      "Wishing you a very happy birthday, {name}!",
+      "Happy birthday {name}! 🎂 Wishing you good health and happiness always",
+      "Many happy returns of the day {name}! 🙏",
+      "Happy birthday {name}! Have a lovely day ❤️",
+      "Happy birthday {name}! Will call you later today",
     ],
     warm: [
-      "Happy birthday {name}! Hope today's a good one",
-      "Happy birthday {name}! Hope you get properly spoiled today",
-      "Happiest birthday {name}! Have the best year",
-      "Happy birthday {name}! Let's celebrate soon",
+      "happy birthday {name}!! 🎂 have the best day",
+      "happy birthday!! hope you get spoilt today",
+      "happiest birthday {name}! have a great year",
+      "happy birthday {name}! let's celebrate soon",
     ],
     playful: [
-      "{name}!! Happy birthday. Another year older, same level of chaos",
-      "Happy birthday {name}! Hope today is all cake and zero adulting",
-      "HBD {name}! Treat when?",
-      "Happy birthday to my favourite menace, {name}!",
+      "HAPPY BIRTHDAY {name}!! 🎉 treat when?",
+      "hbd {name}!! another year of chaos",
+      "happy birthday!! hope today is all cake and no work",
+      "it's your birthday!! 🎂 have the best one {name}",
     ],
   },
 };
 // for "bring up next time" topics, which aren't events, so "how did X go" reads wrong
 const TOPIC_LIBRARY = {
-  respectful: ["Hi {name}, how are things with {about}?", "Hello {name}! Any update on {about}?", "Hi {name}, I was thinking about {about}. How is it going?"],
-  warm: ["Hey {name}! What's the latest with {about}?", "Hi {name}! How's {about} going?", "Hey {name}, any update on {about}?"],
-  playful: ["{name}! Update on {about}, please", "So what's happening with {about}, {name}?", "Okay {name}, spill. How's {about}?"],
+  respectful: ["Hi {name}, how are things with {about}?", "Hi {name}, any update on {about}?", "Hi {name}, all okay with {about}?"],
+  warm: ["hey, what's the latest with {about}?", "how's {about} going?", "any update on {about}?"],
+  playful: ["ok update on {about} pls", "so what's happening with {about}", "{name}! how's {about} going"],
 };
+// belated wishes, one tone each, for the monthly review's missed birthdays
+const BELATED_LIBRARY = {
+  respectful: ["Happy belated birthday {name}! Sorry I missed the day 🙏 Hope you had a nice time", "Belated happy birthday {name}! So sorry, will call you"],
+  warm: ["happy belated birthday {name}!! so sorry I'm late 🙈 hope it was a good one", "ahh I missed your birthday, so sorry! happy belated {name} 🎂"],
+  playful: ["happy belated {name}!! I'm the worst I know 😭", "ok I'm late but happy birthday {name}!! treat still on?"],
+};
+// one-tap links (People card, birthday row, monthly review) skip the picker, so pick a line in their tone.
+// Two people never get the same canned text, and Amma never gets "oi stranger".
+const toneOf = p => MSG_LIBRARY[p.tone] ? p.tone : "warm";
+const nudgeText = p => fillTemplate(pickStarters(toneOf(p), 1)[0] ?? NUDGE_TPL, p);
+const bdayText = p => fillTemplate(shuffleTake(SITUATION_LIBRARY.birthday[toneOf(p)], 1)[0] ?? BDAY_TPL, p);
+const belatedText = p => fillTemplate(shuffleTake(BELATED_LIBRARY[toneOf(p)], 1)[0] ?? BELATED_TPL, p);
+// phrases that make a text read like a bot or a greeting card; the selftest keeps them out
+const AI_TELLS = ["hope this", "thinking of you", "truly", "hearty", "just wanted to", "i was thinking about", "been thinking about", "spill", "fix it", "tell me everything", "sending you strength", "hope all is well", "hope all's well", "keeping well", "on my mind", "wonderful", "best one yet", "treating you", "apologies", "grateful", "reach out", "checking in"];
 function shuffleTake(arr, n) {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
@@ -1447,7 +1462,7 @@ function renderToday() {
   if (bdays.length) {
     expanded += `<section class="block"><div class="block-head"><h2>Birthdays</h2></div><div class="rows card">` +
       bdays.map(({ p, date, dd }) => {
-        const wa = waLink(p, fillTemplate(BDAY_TPL, p));
+        const wa = waLink(p, bdayText(p));
         const age = birthdayAge(p);
         return `<div class="row" data-act="edit-person" data-id="${p.id}">
           <div class="avatar-ring"><div class="face" style="background:${avatarColor(p)};inset:6px">${esc(p.emoji || p.name[0].toUpperCase())}</div></div>
@@ -1518,7 +1533,7 @@ function renderPeople() {
   html += `<section class="block"><div class="block-head"><h2>People</h2><span><button class="more" data-act="open-review">☾ Review</button> <button class="more" data-act="bulk-add">⚡ Quick add</button> <button class="more" data-act="add-person">+ Add person</button></span></div>
     <div class="people-grid">` + list.map(({ p, st, h }) => {
       const hl = healthLabel(h);
-      const wa = waLink(p, fillTemplate(NUDGE_TPL, p));
+      const wa = waLink(p, nudgeText(p));
       return `<div class="person-card card" data-act="edit-person" data-id="${p.id}">
         <div class="person-head">${avatarRing(p, st, true)}
           <div class="info"><div class="name">${esc(p.name)}</div>
@@ -2225,7 +2240,7 @@ function reviewData() {
   const star = S.people.map(p => ({ p, h: healthScore(p) })).filter(x => x.h !== null).sort((a, b) => b.h - a.h)[0] ?? null;
   return { slipped, missedB, totalTouches, star };
 }
-const BELATED_TPL = "Happy belated birthday, {name}! 🎂 So sorry I'm late, hope it was wonderful. Let's celebrate soon!";
+const BELATED_TPL = "happy belated birthday {name}!! so sorry I'm late 🙈 hope it was a good one";
 function reviewModal() {
   S.settings.lastReviewMonth = todayISO().slice(0, 7);
   save();
@@ -2235,13 +2250,13 @@ function reviewModal() {
     <h2 class="serif">Monthly review</h2>
     <p style="font-size:14px;color:var(--ink-2)">Last 30 days: <b style="color:var(--good-text)">${totalTouches} ${totalTouches === 1 ? "touch" : "touches"}</b>${star ? ` · ⭐ most consistent: <b>${esc(star.p.name)}</b>` : ""}</p>
     ${missedB.length ? h3("Missed birthdays — fix it now") + missedB.map(p => {
-      const wa = waLink(p, fillTemplate(BELATED_TPL, p));
+      const wa = waLink(p, belatedText(p));
       return `<div class="queue-row"><span class="qname">🎂 ${esc(p.name)}</span>
         ${wa ? `<a class="btn wa sm" href="${wa}" target="_blank" rel="noopener" data-act="wa-then-ask" data-id="${p.id}">Belated wishes 💬</a>` : `<button class="btn sm" data-act="edit-person" data-id="${p.id}">Add number</button>`}</div>`;
     }).join("") : ""}
     ${slipped.length ? h3("Slipped through the cracks") + slipped.map(p => {
       const st = personState(p);
-      const wa = waLink(p, fillTemplate(NUDGE_TPL, p));
+      const wa = waLink(p, nudgeText(p));
       return `<div class="queue-row">
         <span class="qname">${esc(p.name)} <span style="color:var(--muted);font-size:12px">every ${p.cadence}d · last ${agoDays(st.since)}</span></span>
         ${wa ? `<a class="btn wa sm" href="${wa}" target="_blank" rel="noopener" data-act="wa-then-ask" data-id="${p.id}">💬</a>` : ""}
@@ -3265,7 +3280,7 @@ async function registerPeriodicSync() {
     }
   } catch (e) { /* best-effort — needs installed PWA + engagement */ }
 }
-const APP_VERSION = "v22";
+const APP_VERSION = "v23";
 if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
   navigator.serviceWorker.register("sw.js").then(() => {
     if (Notification.permission === "granted") registerPeriodicSync();
@@ -3362,9 +3377,9 @@ if (_q.has("selftest")) setTimeout(() => {
   ok("notes tab exists", TABS.some(t => t.id === "notes"));
   // follow-ups
   ok("youify her->your", youify("her job interview") === "your job interview" && youify("Appa's checkup") === "Appa's checkup");
-  ok("followup msg warm", followupMessages({ name: "Priya Rao", tone: "warm" }, "her job interview")[0] === "Hey Priya! How did your job interview go?");
-  ok("followup msg respectful", followupMessages({ name: "Amma", tone: "respectful" }, "Appa's checkup")[1] === "Hello Amma! Any news on Appa's checkup?");
-  ok("followup generic when blank", followupMessages({ name: "Rohan", tone: "playful" }, "")[0] === "Rohan! Checking in. What's new?");
+  ok("followup msg warm", followupMessages({ name: "Priya Rao", tone: "warm" }, "her job interview")[0] === "hey! how did your job interview go?");
+  ok("followup msg respectful", followupMessages({ name: "Amma", tone: "respectful" }, "Appa's checkup")[1] === "Hi Amma, any news on Appa's checkup?");
+  ok("followup generic when blank", followupMessages({ name: "Rohan", tone: "playful" }, "")[0] === "Rohan! what's new with you");
   ok("followup unknown tone falls back", followupMessages({ name: "X", tone: "zzz" }, "the trip").length === 3);
   ok("followup templates no em-dash", ![...Object.values(FOLLOWUP_LIBRARY).flat(), ...Object.values(GENERIC_FOLLOWUP)].some(s => /[–—]/.test(s)));
   const fuTmp = { id: "fu-test-person", name: "Zara Test", phone: "", cadence: 30, interactions: [] };
@@ -3390,15 +3405,22 @@ if (_q.has("selftest")) setTimeout(() => {
   // responses by situation
   const allSit = Object.values(SITUATION_LIBRARY).flatMap(s => Object.values(s).flat()).concat(Object.values(TOPIC_LIBRARY).flat());
   ok("situation lines: 4 per tone per situation", Object.values(SITUATION_LIBRARY).every(s => ["respectful", "warm", "playful"].every(t => s[t]?.length === 4)));
-  ok("situation lines all use {name}, no dashes", allSit.every(s => s.includes("{name}") && !/[–—]/.test(s)));
+  ok("situation lines: no dashes, placeholders only {name}/{about}", allSit.every(s => !/[–—]/.test(s) && (s.match(/\{\w+\}/g) ?? []).every(t => t === "{name}" || t === "{about}")));
+  const everyLine = [NUDGE_TPL, OCC_TPL, BDAY_TPL, BELATED_TPL, ...Object.values(MSG_LIBRARY).flat(), ...Object.values(FOLLOWUP_LIBRARY).flat(), ...Object.values(GENERIC_FOLLOWUP), ...Object.values(BELATED_LIBRARY).flat(), ...allSit];
+  const tells = everyLine.filter(s => AI_TELLS.some(t => s.toLowerCase().includes(t)));
+  ok("no bot phrases in any message" + (tells.length ? ": " + tells[0] : ""), tells.length === 0);
+  ok("messages stay short like texts", everyLine.every(s => s.length <= 90));
+  const amma = { name: "Amma", tone: "respectful", birthday: "1970-03-02" }, ro = { name: "Rohan Mehta", tone: "playful" };
+  ok("one-tap nudge follows their tone", MSG_LIBRARY.respectful.map(t => fillTemplate(t, amma)).includes(nudgeText(amma)) && MSG_LIBRARY.playful.map(t => fillTemplate(t, ro)).includes(nudgeText(ro)));
+  ok("one-tap birthday + belated follow their tone", SITUATION_LIBRARY.birthday.respectful.map(t => fillTemplate(t, amma)).includes(bdayText(amma)) && BELATED_LIBRARY.playful.map(t => fillTemplate(t, ro)).includes(belatedText(ro)));
   ok("every situation has a label", Object.keys(SITUATION_LIBRARY).every(k => SITUATIONS.some(([s]) => s === k)));
   const sp = { name: "Rohan Mehta", tone: "playful", topics: ["his new apartment", "the Goa trip plan"] };
   const plan3 = situationStarters(sp, "plan");
   ok("plan: 3 distinct from the playful set", plan3.length === 3 && new Set(plan3).size === 3 && plan3.every(s => SITUATION_LIBRARY.plan.playful.includes(s)));
   const topicLines = situationStarters(sp, "followup", null).map(s => fillTemplate(s, sp));
-  ok("follow up from topics: one per topic, youified", topicLines.length === 2 && topicLines[0] === "Rohan! Update on your new apartment, please" && topicLines[1].includes("the Goa trip plan"));
-  ok("due follow-up leads with how-did-it-go", situationStarters(sp, "followup", { about: "the trek", date: todayISO() })[0] === "Okay Rohan, how did the trek go? Tell me everything");
-  ok("early follow-up leads with any-news, not past tense", situationStarters(sp, "followup", { about: "the trek", date: addDays(todayISO(), 3) })[0] === "Rohan!! Update on the trek. Now.");
+  ok("follow up from topics: one per topic, youified", topicLines.length === 2 && topicLines[0] === "ok update on your new apartment pls" && topicLines[1].includes("the Goa trip plan"));
+  ok("due follow-up leads with how-did-it-go", fillTemplate(situationStarters(sp, "followup", { about: "the trek", date: todayISO() })[0], sp) === "so how did the trek go?? 👀");
+  ok("early follow-up leads with any-news, not past tense", situationStarters(sp, "followup", { about: "the trek", date: addDays(todayISO(), 3) })[0] === "update on the trek pls");
   ok("unknown tone falls back to warm", situationStarters({ name: "X", tone: "zzz" }, "thanks").every(s => SITUATION_LIBRARY.thanks.warm.includes(s)));
   ok("save-as-mine swaps the name back", toSavedTemplate("Hey Rohan, rohan's treat?", sp) === "Hey {name}, {name}'s treat?" && toSavedTemplate("Hi Priyanka", { name: "Priya" }) === "Hi Priyanka");
   const savedBefore = S.settings.savedMsgs;
