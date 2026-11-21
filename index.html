@@ -181,6 +181,15 @@ section.block { margin-bottom: 28px; }
 .search-hit { font-size: 12.5px; color: var(--ink-2); margin-top: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .search-hit mark { background: color-mix(in srgb, var(--gold) 35%, transparent); color: inherit; border-radius: 3px; padding: 0 1px; }
 .people-empty { padding: 18px; color: var(--muted); font-size: 14px; }
+.claude-out { margin-top: 10px; background: color-mix(in srgb, var(--accent) 7%, var(--surface)); border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent); border-radius: 12px; padding: 10px 12px; font-size: 13.5px; color: var(--ink-2); }
+.claude-out p { margin: 2px 0 8px; }
+.claude-out textarea { width: 100%; font: inherit; font-size: 12.5px; color: var(--ink); background: var(--page); border: 1px solid var(--border); border-radius: 9px; padding: 8px 10px; margin-bottom: 8px; }
+.claude-head { font-weight: 600; color: var(--ink); margin-bottom: 8px; }
+.claude-ideas-head { font-weight: 600; color: var(--ink); margin: 10px 0 4px; font-size: 13px; }
+.claude-actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.claude-err { color: var(--critical); }
+.claude-key-row { display: flex; gap: 8px; margin: 8px 0; }
+.claude-key-row input { flex: 1; min-width: 0; font: inherit; font-size: 14px; padding: 9px 11px; border-radius: 9px; border: 1px solid var(--border); background: var(--page); color: var(--ink); }
 .focus-fu { font-size: 12.5px; color: color-mix(in srgb, var(--gold) 55%, var(--ink)); margin-top: 3px; font-weight: 600; }
 .fu-note { background: color-mix(in srgb, var(--gold) 14%, var(--surface)); }
 .sit-row { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; margin: 0 -2px; }
@@ -1156,6 +1165,129 @@ const bdayText = p => fillTemplate(shuffleTake(SITUATION_LIBRARY.birthday[toneOf
 const belatedText = p => fillTemplate(shuffleTake(BELATED_LIBRARY[toneOf(p)], 1)[0] ?? BELATED_TPL, p);
 // phrases that make a text read like a bot or a greeting card; the selftest keeps them out
 const AI_TELLS = ["hope this", "thinking of you", "truly", "hearty", "just wanted to", "i was thinking about", "been thinking about", "spill", "fix it", "tell me everything", "sending you strength", "hope all is well", "hope all's well", "keeping well", "on my mind", "wonderful", "best one yet", "treating you", "apologies", "grateful", "reach out", "checking in"];
+
+/* ---------- ✨ Ask Claude: texts written from what you know about them ---------- */
+// The key is yours and stays in this browser, under its own storage key, so it never lands in backups or exports.
+const CLAUDE_KEY_STORE = "kith-claude-key";
+const CLAUDE_MODEL = "claude-opus-5-5";
+const CLAUDE_SDK_URL = "https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@1.6.0/+esm";
+const claudeKey = () => { try { return localStorage.getItem(CLAUDE_KEY_STORE) || ""; } catch (e) { return ""; } };
+const setClaudeKey = k => { try { k ? localStorage.setItem(CLAUDE_KEY_STORE, k) : localStorage.removeItem(CLAUDE_KEY_STORE); } catch (e) { } };
+const TONE_WHO = {
+  respectful: "family or an elder (Amma, grandparents, uncles, aunties): plain and respectful, normal capitals, Indian-family style",
+  warm: "a friend: casual, short, mostly lowercase",
+  playful: "a close friend: loose and teasing, lowercase, words like yaar / pls / na are fine",
+};
+const SIT_ASK = {
+  checkin: "a simple check-in, it's been a while", followup: "following up on something", plan: "making a plan to meet",
+  congrats: "congratulating them", tough: "they're going through a tough time", late: "replying late to their message",
+  thanks: "thanking them", birthday: "wishing them a happy birthday", mine: "a simple check-in",
+};
+const CLAUDE_SYSTEM = `You help Garrick (21, lives in Bangalore) keep in touch with his friends and family. You write WhatsApp messages he sends as himself, and suggest small ways to stay close.
+
+Messages:
+- They must read like real texts from a 21-year-old in Bangalore, never like AI. One or two short lines, under 90 characters.
+- Match the tone you're given. Friends: mostly lowercase and loose. Family and elders: plain, warm and respectful.
+- Use at most one detail from what he knows, only where it fits naturally. Never invent anything that isn't in the notes.
+- No em dashes or en dashes. No greeting-card lines. Never use these phrases: ${AI_TELLS.join(", ")}.
+- Give 3 different options: one that uses a detail from the notes, one simple and easy, one that asks a question or suggests meeting.
+
+Ideas: 2 to 4 short suggestions (under 80 characters each) for staying close to this person, such as something to ask about, a simple plan in Bangalore, or a gift if their birthday is near. Concrete, and based only on the notes.`;
+const CLAUDE_SCHEMA = {
+  type: "object",
+  properties: { messages: { type: "array", items: { type: "string" } }, ideas: { type: "array", items: { type: "string" } } },
+  required: ["messages", "ideas"],
+  additionalProperties: false,
+};
+function claudeContext(p, situation, fu) {
+  const first = p.name.split(" ")[0];
+  const tone = toneOf(p);
+  const st = personState(p);
+  const out = [`Who: ${first}. Garrick texts them as ${TONE_WHO[tone]}.`];
+  out.push(`This text is for: ${SIT_ASK[situation] ?? SIT_ASK.checkin}${fu?.about ? `, asking about ${youify(fu.about)}` : ""}.`);
+  if (st.everContacted) out.push(`Last in touch: ${agoDays(st.since)} (he aims for every ${p.cadence} days).`);
+  const nb = p.birthday ? daysUntil(nextBirthday(p)) : null;
+  if (nb !== null && nb <= 14) out.push(`Their birthday is ${nb === 0 ? "today" : inDays(nb)}.`);
+  const facts = aboutFacts(p), gifts = giftIdeas(p);
+  if (facts.length) out.push(`What Garrick knows about ${first}:\n- ${facts.join("\n- ")}`);
+  if (p.circle) out.push(`Their people: ${p.circle}`);
+  if ((p.topics ?? []).length) out.push(`Things he wants to bring up: ${p.topics.join("; ")}`);
+  const moments = [...(p.interactions ?? [])].filter(i => i.note).sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, 5);
+  if (moments.length) out.push(`Recent conversations:\n- ${moments.map(m => `${fmtNice(m.date)}: ${m.note}`).join("\n- ")}`);
+  if (gifts.length && nb !== null && nb <= 30) out.push(`Gift ideas he already noted: ${gifts.join("; ")}`);
+  // his own saved messages are the best voice sample; the tone's starters are the fallback
+  const mine = (S.settings.savedMsgs ?? []).slice(0, 8).map(m => m.replaceAll("{name}", first));
+  const samples = mine.length ? mine : (MSG_LIBRARY[tone] ?? []).slice(0, 3).map(m => fillTemplate(m, p));
+  out.push(`How Garrick actually texts (match this voice):\n- ${samples.join("\n- ")}`);
+  return out.join("\n\n");
+}
+const claudeCopyPrompt = (p, situation, fu) => `${CLAUDE_SYSTEM}\n\n${claudeContext(p, situation, fu)}\n\nReply with the 3 messages, then the ideas, as two short lists. Nothing else.`;
+function cleanClaude(out) {
+  const tidy = x => String(x ?? "").replace(/\s*[—–]\s*/g, ", ").replace(/[ \t]+/g, " ").trim();
+  let msgs = (out?.messages ?? []).map(tidy).filter(Boolean);
+  const human = msgs.filter(m => !AI_TELLS.some(t => m.toLowerCase().includes(t)));
+  if (human.length) msgs = human;
+  return { messages: msgs.slice(0, 3), ideas: (out?.ideas ?? []).map(tidy).filter(Boolean).slice(0, 4) };
+}
+let claudeSdk = null;
+async function askClaude(p, situation, fu) {
+  if (!claudeSdk) claudeSdk = (await import(CLAUDE_SDK_URL)).default;
+  const client = new claudeSdk({ apiKey: claudeKey(), dangerouslyAllowBrowser: true, maxRetries: 1, timeout: 60000 });
+  const response = await client.beta.messages.create({
+    model: CLAUDE_MODEL,
+    max_tokens: 16000,
+    // if Claude's safety check declines, the API retries on a fallback model in the same call
+    betas: ["server-side-fallback-2026-07-01"],
+    fallbacks: "default",
+    system: CLAUDE_SYSTEM,
+    messages: [{ role: "user", content: claudeContext(p, situation, fu) }],
+    output_config: { effort: "low", format: { type: "json_schema", schema: CLAUDE_SCHEMA } },
+  });
+  if (response.stop_reason === "refusal") throw new Error("refusal");
+  const text = response.content.filter(b => b.type === "text").map(b => b.text).join("");
+  return cleanClaude(JSON.parse(text));
+}
+function claudeErrorText(e) {
+  const A = claudeSdk, msg = String(e?.message ?? "");
+  if (msg === "refusal") return "Claude couldn't help with this one. Try a starter instead.";
+  if (/credit balance/i.test(msg)) return "Your Anthropic credit has run out. Top up at console.anthropic.com.";
+  if (!A) return "Couldn't load Claude. Check your internet.";
+  if (e instanceof A.AuthenticationError) return "That API key didn't work. Check it in Settings.";
+  if (e instanceof A.PermissionDeniedError) return "This key isn't allowed to use Claude. Check it in Settings.";
+  if (e instanceof A.RateLimitError) return "Claude's busy right now. Try again in a minute.";
+  if (e instanceof A.APIConnectionError) return "Couldn't reach Claude. Check your internet.";
+  if (e instanceof SyntaxError) return "Claude's reply came back garbled. Try again.";
+  return "Something went wrong asking Claude. Try again.";
+}
+async function claudeSuggest(p, situation, fu, btn) {
+  const box = $("#claudeOut");
+  if (!box) return;
+  const first = esc(p.name.split(" ")[0]);
+  if (!claudeKey()) {
+    // no key: hand the notes to the Claude app (free on his subscription). Copy first, while the tap still counts.
+    const prompt = claudeCopyPrompt(p, situation, fu);
+    let copied = false;
+    try { await navigator.clipboard.writeText(prompt); copied = true; } catch (e) { }
+    box.innerHTML = `<div class="claude-out"><div class="claude-head">✨ Ask Claude</div>
+      <p>${copied ? `Copied what you know about ${first}. Paste it into Claude, then copy the reply you like into your message below.` : `Copy this into Claude, then put the reply you like into your message below.`}</p>
+      ${copied ? "" : `<textarea readonly rows="5">${esc(prompt)}</textarea>`}
+      <div class="claude-actions"><a class="btn sm" href="https://claude.ai/new" target="_blank" rel="noopener">Open Claude ↗</a><button type="button" class="linkish" data-act="settings-claude">Get replies right here instead</button></div></div>`;
+    return;
+  }
+  if (btn) btn.disabled = true;
+  box.innerHTML = `<div class="claude-out"><div class="claude-head">✨ Claude is reading your notes on ${first}…</div></div>`;
+  try {
+    const out = await askClaude(p, situation, fu);
+    if (!document.body.contains(box)) return;
+    box.innerHTML = `<div class="claude-out"><div class="claude-head">✨ From Claude: tap one, then make it yours</div>
+      <div class="starter-list">${out.messages.map(m => `<button type="button" class="starter" data-fill="${esc(m)}">${esc(m)}</button>`).join("")}</div>
+      ${out.ideas.length ? `<div class="claude-ideas-head">Ideas for ${first}</div><ul class="about-list">${out.ideas.map(i => `<li>${esc(i)}</li>`).join("")}</ul>` : ""}</div>`;
+  } catch (e) {
+    if (document.body.contains(box)) box.innerHTML = `<div class="claude-out claude-err">${esc(claudeErrorText(e))}</div>`;
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
 function shuffleTake(arr, n) {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
@@ -1239,7 +1371,9 @@ function msgModal(id, fuId, sit) {
     </div>
     <div class="field"><label>${esc(sitLabel)}${situation === "mine" ? "" : ` · ${esc(toneLabel(tone))}`} — tap one, then make it yours</label>
       <div class="starter-list">${starterHtml}</div>
+      <div id="claudeOut"></div>
       <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;margin-top:8px">
+        <button type="button" class="btn ghost sm" data-act="ask-claude" data-id="${id}" data-sit="${situation}" data-fu="${fu?.id ?? ""}">✨ Ask Claude</button>
         ${fu || situation === "mine" || (situation === "followup" && topics.length) ? "" : `<button type="button" class="btn ghost sm" data-act="msg-shuffle" data-id="${id}" data-sit="${situation}">🎲 Other options</button>`}
         <button type="button" class="btn ghost sm" data-act="fu-new" data-id="${id}">⏰ Follow up later</button>
         <button type="button" class="btn ghost sm" data-act="edit-person" data-id="${id}">Change tone</button>
@@ -1913,6 +2047,15 @@ function renderSettings() {
       </div>`;
     }).join("")}
     <div style="margin-top:12px"><button class="btn" data-act="add-occasion">+ Add a custom occasion</button></div>
+  </div>
+  <div class="settings-block card" id="claudeBlock">
+    <h3>✨ Claude</h3>
+    ${claudeKey()
+      ? `<p><b>Connected.</b> ✨ Ask Claude in the message picker reads what you've noted about that person and writes three texts in your voice, plus a few ideas. Roughly a rupee or two a tap, billed to your Anthropic account.</p>
+         <button class="btn" data-act="claude-key-clear">Remove key</button>`
+      : `<p>✨ Ask Claude in the message picker copies what you know about someone, so you can paste it into the Claude app. To get the replies right inside Kith instead, add your own Anthropic API key from <b>console.anthropic.com → API keys</b> (it needs prepaid credit; roughly a rupee or two a tap).</p>
+         <div class="claude-key-row"><input id="claudeKey" type="password" placeholder="sk-ant-…" autocomplete="off" spellcheck="false" aria-label="Anthropic API key"><button class="btn primary" data-act="claude-key-save">Save</button></div>`}
+    <p class="hint">The key stays in this browser only and isn't in your backups or exports. When you tap Ask Claude, that person's notes go to Anthropic to write the reply.</p>
   </div>
   <div class="settings-block card">
     <h3>Backup</h3>
@@ -2629,6 +2772,20 @@ document.addEventListener("click", e => {
     case "log": e.stopPropagation(); logTouch(id, undefined, el.dataset.via); break;
     case "msg": e.stopPropagation(); msgModal(id); break;
     case "msg-shuffle": msgModal(id, "none", el.dataset.sit || "checkin"); break;
+    case "ask-claude": {
+      const p = S.people.find(x => x.id === id);
+      const fu = el.dataset.fu ? S.followups.find(x => x.id === el.dataset.fu) ?? null : null;
+      if (p) claudeSuggest(p, el.dataset.sit || "checkin", fu, el);
+      break;
+    }
+    case "settings-claude": closeModal(); activeTab = "settings"; render(); setTimeout(() => $("#claudeBlock")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50); break;
+    case "claude-key-save": {
+      const k = ($("#claudeKey")?.value ?? "").trim();
+      if (!k) { toast("Paste your key first"); break; }
+      setClaudeKey(k); render(); toast("✨ Claude connected. Try it in any message.");
+      break;
+    }
+    case "claude-key-clear": setClaudeKey(""); render(); toast("Key removed from this device"); break;
     case "msg-general": msgModal(id, "none"); break;
     case "msg-sit": msgModal(id, el.dataset.sit === "followup" ? undefined : "none", el.dataset.sit); break;
     case "msg-save": {
@@ -3401,7 +3558,7 @@ async function registerPeriodicSync() {
     }
   } catch (e) { /* best-effort — needs installed PWA + engagement */ }
 }
-const APP_VERSION = "v24";
+const APP_VERSION = "v25";
 if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
   navigator.serviceWorker.register("sw.js").then(() => {
     if (Notification.permission === "granted") registerPeriodicSync();
@@ -3564,6 +3721,18 @@ if (_q.has("selftest")) setTimeout(() => {
   ok("search: name, About, misses", personSearchHit(ab, "kapoor").hit && personSearchHit(ab, "VEGET").snippet === "vegetarian" && !personSearchHit(ab, "arsenal").hit && personSearchHit(ab, "").hit);
   ok("search: marks the match", markHit("big Arsenal fan", "arsenal") === "big <mark>Arsenal</mark> fan");
   S.people = S.people.filter(p => p.id !== "ab1" && p.id !== "ab2");
+  // ask claude (no network here: prompt building, clean-up, key storage)
+  const cz = { id: "cz", name: "Zoya Kapoor", tone: "playful", cadence: 14, notes: "moved to Pune\ngift: a plant", topics: ["her new job"], interactions: [{ date: addDays(todayISO(), -9), note: "talked about her trek" }] };
+  const ctx = claudeContext(cz, "followup", { about: "her interview" });
+  ok("claude context: notes, topics, moments, tone, follow-up", ctx.includes("moved to Pune") && ctx.includes("her new job") && ctx.includes("talked about her trek") && ctx.includes(TONE_WHO.playful) && ctx.includes("asking about your interview") && !ctx.includes("a plant"));
+  ok("claude system bans the bot phrases", AI_TELLS.every(t => CLAUDE_SYSTEM.includes(t)) && claudeCopyPrompt(cz, "checkin").startsWith(CLAUDE_SYSTEM));
+  const cc = cleanClaude({ messages: ["hey — long time", "Thinking of you today!", "free sat?", "4th"], ideas: ["ask about Pune – the flat", "", "b", "c", "d", "e"] });
+  ok("claude replies cleaned: dashes, bot lines, caps", cc.messages.join("|") === "hey, long time|free sat?|4th" && cc.ideas.length === 4 && cc.ideas[0] === "ask about Pune, the flat");
+  ok("claude replies: keeps something if all look botty", cleanClaude({ messages: ["thinking of you"], ideas: [] }).messages.length === 1);
+  const keyBefore = claudeKey();
+  setClaudeKey("sk-ant-selftest-0000");
+  ok("claude key stored apart from your data", claudeKey() === "sk-ant-selftest-0000" && !JSON.stringify(S).includes("sk-ant-selftest") && !(localStorage.getItem("orbit-data") ?? "").includes("sk-ant-selftest"));
+  setClaudeKey(keyBefore);
   ok("csv notes come in as About", mapContacts([["Name", "Phone", "Notes"], ["Asha", "+91 98450 00000", "met at Stripe"]])[0].notes === "met at Stripe");
   // tracking
   const tpD = n => addDays(todayISO(), -n);
